@@ -24,6 +24,26 @@ const VotingInterface = () => {
         const data = await response.json();
         setCompetition(data);
         setTeams(data.teams?.filter(team => team.status === 'active') || []);
+        
+        // Check if competition was reset since user last voted
+        const voteTimestamp = localStorage.getItem(`vote-timestamp-${competitionId}`);
+        const competitionResetTime = data.last_reset;
+        
+        if (voteTimestamp && competitionResetTime) {
+          const userVotedAt = new Date(voteTimestamp);
+          const competitionResetAt = new Date(competitionResetTime);
+          
+          // If competition was reset after user voted, clear their vote record
+          if (competitionResetAt > userVotedAt) {
+            console.log('Competition was reset since last vote - clearing vote record');
+            localStorage.removeItem(`has-voted-${competitionId}`);
+            localStorage.removeItem(`vote-timestamp-${competitionId}`);
+            setVoted(false);
+            setSelectedTeam(null);
+            setError(null);
+          }
+        }
+        
         socketManager.joinCompetition(competitionId);
       } else {
         setError('Competition not found');
@@ -48,6 +68,7 @@ const VotingInterface = () => {
       setVoted(false);
       setSelectedTeam(null);
       localStorage.removeItem(`has-voted-${competitionId}`);
+      localStorage.removeItem(`vote-timestamp-${competitionId}`);
     }
   }, [competitionId]);
 
@@ -70,8 +91,9 @@ const VotingInterface = () => {
       setVoted(false);
       setSelectedTeam(null);
       setError(null);
-      // Clear local storage vote record
+      // Clear local storage vote records
       localStorage.removeItem(`has-voted-${competitionId}`);
+      localStorage.removeItem(`vote-timestamp-${competitionId}`);
     }
   }, [competitionId]);
 
@@ -110,7 +132,9 @@ const VotingInterface = () => {
 
       if (response.ok) {
         setVoted(true);
+        const voteTimestamp = new Date().toISOString();
         localStorage.setItem(`has-voted-${competitionId}`, 'true');
+        localStorage.setItem(`vote-timestamp-${competitionId}`, voteTimestamp);
         // Keep selected team visible for feedback
       } else {
         const errorData = await response.json();

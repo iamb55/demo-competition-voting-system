@@ -432,11 +432,12 @@ app.post('/api/competition/:id/reset', async (req, res) => {
   try {
     const competitionId = req.params.id;
     
-    // Update competition status back to setup
+    // Update competition status back to setup with reset timestamp
     await db.updateCompetitionStatus(competitionId, 'setup', {
       started_at: null,
       completed_at: null,
-      winner_team_id: null
+      winner_team_id: null,
+      last_reset: new Date().toISOString()
     });
 
     // Reset all teams (status and vote counts)
