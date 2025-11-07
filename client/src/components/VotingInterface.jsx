@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import socketManager from '../utils/socket';
 import { API_BASE_URL } from '../utils/api';
@@ -42,9 +42,9 @@ const VotingInterface = () => {
       socketManager.off('competitionComplete', handleCompetitionComplete);
       socketManager.off('currentState', handleCurrentState);
     };
-  }, [competitionId]);
+  }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleTeamEliminated, handleCompetitionComplete, handleCurrentState]);
 
-  const fetchCompetition = async () => {
+  const fetchCompetition = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/competition/${competitionId}`);
       if (response.ok) {
@@ -60,22 +60,15 @@ const VotingInterface = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [competitionId]);
 
-  const setupSocketListeners = () => {
-    socketManager.on('voteUpdate', handleVoteUpdate);
-    socketManager.on('teamEliminated', handleTeamEliminated);
-    socketManager.on('competitionComplete', handleCompetitionComplete);
-    socketManager.on('currentState', handleCurrentState);
-  };
-
-  const handleVoteUpdate = (data) => {
+  const handleVoteUpdate = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setTeams(data.teams.filter(team => team.status === 'active'));
     }
-  };
+  }, [competitionId]);
 
-  const handleTeamEliminated = (data) => {
+  const handleTeamEliminated = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setTeams(data.remainingTeams);
       // Reset voting for next round
@@ -83,19 +76,26 @@ const VotingInterface = () => {
       setSelectedTeam(null);
       localStorage.removeItem(`has-voted-${competitionId}`);
     }
-  };
+  }, [competitionId]);
 
-  const handleCompetitionComplete = (data) => {
+  const handleCompetitionComplete = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setError(`Competition complete! Winner: ${data.winner.name}`);
     }
-  };
+  }, [competitionId]);
 
-  const handleCurrentState = (data) => {
+  const handleCurrentState = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setTeams(data.teams.filter(team => team.status === 'active'));
     }
-  };
+  }, [competitionId]);
+
+  const setupSocketListeners = useCallback(() => {
+    socketManager.on('voteUpdate', handleVoteUpdate);
+    socketManager.on('teamEliminated', handleTeamEliminated);
+    socketManager.on('competitionComplete', handleCompetitionComplete);
+    socketManager.on('currentState', handleCurrentState);
+  }, [handleVoteUpdate, handleTeamEliminated, handleCompetitionComplete, handleCurrentState]);
 
   const handleTeamSelect = (team) => {
     if (!voted && !voting) {

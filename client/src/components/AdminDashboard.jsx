@@ -1,11 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
 import socketManager from '../utils/socket';
 import { API_BASE_URL } from '../utils/api';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
-  const navigate = useNavigate();
   const [competitions, setCompetitions] = useState([]);
   const [currentCompetition, setCurrentCompetition] = useState(null);
   const [teams, setTeams] = useState([]);
@@ -23,6 +21,29 @@ const AdminDashboard = () => {
   const [inputMode, setInputMode] = useState('individual'); // 'individual' or 'bulk'
   const [bulkTeamNames, setBulkTeamNames] = useState('');
 
+  const handleVoteUpdate = useCallback((data) => {
+    console.log('Admin received vote update:', data);
+    if (currentCompetition && data.competitionId === currentCompetition.id) {
+      setTeams(data.teams);
+    }
+  }, [currentCompetition]);
+
+  const handleCompetitionComplete = useCallback((data) => {
+    if (currentCompetition && data.competitionId === currentCompetition.id) {
+      setSuccess(`Competition completed! Winner: ${data.winner.name}`);
+      setTimeout(() => {
+        fetchHistory();
+        setCurrentCompetition(null);
+        setTeams([]);
+      }, 3000);
+    }
+  }, [currentCompetition]);
+
+  const setupSocketListeners = useCallback(() => {
+    socketManager.on('voteUpdate', handleVoteUpdate);
+    socketManager.on('competitionComplete', handleCompetitionComplete);
+  }, [handleVoteUpdate, handleCompetitionComplete]);
+
   useEffect(() => {
     fetchHistory();
     setupSocketListeners();
@@ -32,30 +53,7 @@ const AdminDashboard = () => {
       socketManager.off('voteUpdate', handleVoteUpdate);
       socketManager.off('competitionComplete', handleCompetitionComplete);
     };
-  }, []);
-
-  const setupSocketListeners = () => {
-    socketManager.on('voteUpdate', handleVoteUpdate);
-    socketManager.on('competitionComplete', handleCompetitionComplete);
-  };
-
-  const handleVoteUpdate = (data) => {
-    console.log('Admin received vote update:', data);
-    if (currentCompetition && data.competitionId === currentCompetition.id) {
-      setTeams(data.teams);
-    }
-  };
-
-  const handleCompetitionComplete = (data) => {
-    if (currentCompetition && data.competitionId === currentCompetition.id) {
-      setSuccess(`Competition completed! Winner: ${data.winner.name}`);
-      setTimeout(() => {
-        fetchHistory();
-        setCurrentCompetition(null);
-        setTeams([]);
-      }, 3000);
-    }
-  };
+  }, [setupSocketListeners, handleVoteUpdate, handleCompetitionComplete]);
 
   const fetchHistory = async () => {
     try {

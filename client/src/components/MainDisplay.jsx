@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import socketManager from '../utils/socket';
 import './MainDisplay.css';
@@ -19,7 +19,7 @@ const MainDisplay = () => {
     fetchCompetition();
     setupSocketListeners();
     socketManager.connect();
-    
+
     return () => {
       socketManager.off('voteUpdate', handleVoteUpdate);
       socketManager.off('teamEliminated', handleTeamEliminated);
@@ -27,9 +27,9 @@ const MainDisplay = () => {
       socketManager.off('competitionComplete', handleCompetitionComplete);
       socketManager.off('currentState', handleCurrentState);
     };
-  }, [competitionId]);
+  }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCurrentState]);
 
-  const fetchCompetition = async () => {
+  const fetchCompetition = useCallback(async () => {
     try {
       const response = await fetch(`http://localhost:3001/api/competition/${competitionId}`);
       if (response.ok) {
@@ -45,23 +45,15 @@ const MainDisplay = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [competitionId]);
 
-  const setupSocketListeners = () => {
-    socketManager.on('voteUpdate', handleVoteUpdate);
-    socketManager.on('teamEliminated', handleTeamEliminated);
-    socketManager.on('roundReset', handleRoundReset);
-    socketManager.on('competitionComplete', handleCompetitionComplete);
-    socketManager.on('currentState', handleCurrentState);
-  };
-
-  const handleVoteUpdate = (data) => {
+  const handleVoteUpdate = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setTeams(data.teams);
     }
-  };
+  }, [competitionId]);
 
-  const handleTeamEliminated = (data) => {
+  const handleTeamEliminated = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setEliminatedTeams(prev => new Set([...prev, data.eliminatedTeam.id]));
       
@@ -76,16 +68,16 @@ const MainDisplay = () => {
         );
       }, 2000);
     }
-  };
+  }, [competitionId]);
 
-  const handleRoundReset = (data) => {
+  const handleRoundReset = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setTeams(data.teams);
       setEliminatedTeams(new Set());
     }
-  };
+  }, [competitionId]);
 
-  const handleCompetitionComplete = (data) => {
+  const handleCompetitionComplete = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setWinner(data.winner);
       // Trigger confetti
@@ -97,13 +89,21 @@ const MainDisplay = () => {
         });
       }
     }
-  };
+  }, [competitionId]);
 
-  const handleCurrentState = (data) => {
+  const handleCurrentState = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setTeams(data.teams);
     }
-  };
+  }, [competitionId]);
+
+  const setupSocketListeners = useCallback(() => {
+    socketManager.on('voteUpdate', handleVoteUpdate);
+    socketManager.on('teamEliminated', handleTeamEliminated);
+    socketManager.on('roundReset', handleRoundReset);
+    socketManager.on('competitionComplete', handleCompetitionComplete);
+    socketManager.on('currentState', handleCurrentState);
+  }, [handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCurrentState]);
 
   if (loading) {
     return (
