@@ -20,6 +20,7 @@ class Database {
           started_at DATETIME,
           completed_at DATETIME,
           winner_team_id TEXT,
+          last_reset DATETIME,
           settings JSON DEFAULT '{}'
         )
       `);
@@ -66,6 +67,16 @@ class Database {
           FOREIGN KEY (competition_id) REFERENCES competitions (id)
         )
       `);
+
+      // Add last_reset column to existing competitions table (for backwards compatibility)
+      this.db.run(`
+        ALTER TABLE competitions ADD COLUMN last_reset DATETIME
+      `, (err) => {
+        // Ignore error if column already exists
+        if (err && !err.message.includes('duplicate column name')) {
+          console.warn('Error adding last_reset column:', err.message);
+        }
+      });
     });
   }
 
