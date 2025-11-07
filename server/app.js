@@ -34,9 +34,24 @@ function getClientURL() {
   }
   
   if (NODE_ENV === 'production') {
-    // In production on Vercel, use the deployment URL
+    // Try multiple Railway environment variables
+    if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+      return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+    }
+    
+    // Railway might also set these
+    if (process.env.PUBLIC_DOMAIN) {
+      return `https://${process.env.PUBLIC_DOMAIN}`;
+    }
+    
+    // If we know it's Railway, construct the URL from known pattern
+    // Railway URLs follow pattern: projectname-production.up.railway.app
+    if (process.env.RAILWAY_ENVIRONMENT) {
+      return `https://demo-competition-voting-system-production.up.railway.app`;
+    }
+    
+    // Fallback to other hosting platforms
     return process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
-           process.env.RAILWAY_STATIC_URL || 
            process.env.RENDER_EXTERNAL_URL || 
            `http://localhost:${PORT}`;
   } else {
@@ -46,6 +61,14 @@ function getClientURL() {
 }
 
 const CLIENT_URL = getClientURL();
+
+// Debug logging for URL detection
+console.log('🌐 Environment Detection:');
+console.log(`  NODE_ENV: ${NODE_ENV}`);
+console.log(`  RAILWAY_ENVIRONMENT: ${process.env.RAILWAY_ENVIRONMENT || 'not set'}`);
+console.log(`  RAILWAY_PUBLIC_DOMAIN: ${process.env.RAILWAY_PUBLIC_DOMAIN || 'not set'}`);
+console.log(`  PUBLIC_DOMAIN: ${process.env.PUBLIC_DOMAIN || 'not set'}`);
+console.log(`  Detected CLIENT_URL: ${CLIENT_URL}`);
 
 const app = express();
 const server = http.createServer(app);
@@ -60,12 +83,15 @@ const allowedOrigins = [
 // Add additional origins for production
 if (NODE_ENV === 'production') {
   allowedOrigins.push(
+    // Railway domains
+    'https://demo-competition-voting-system-production.up.railway.app',
+    /\.up\.railway\.app$/,
+    
+    // Other platforms
     process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
-    process.env.RAILWAY_STATIC_URL,
     process.env.RENDER_EXTERNAL_URL,
-    `https://${process.env.RAILWAY_STATIC_URL}`,
-    `https://${process.env.RENDER_EXTERNAL_URL}`,
-    // Allow Vercel preview deployments
+    
+    // Pattern matchers for preview deployments
     /\.vercel\.app$/
   );
 }

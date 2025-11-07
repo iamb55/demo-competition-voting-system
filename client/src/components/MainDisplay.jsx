@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import socketManager from '../utils/socket';
+import { API_BASE_URL } from '../utils/api';
 import './MainDisplay.css';
 
 const MainDisplay = () => {
@@ -17,7 +18,7 @@ const MainDisplay = () => {
 
   const fetchCompetition = useCallback(async () => {
     try {
-      const response = await fetch(`http://localhost:3001/api/competition/${competitionId}`);
+      const response = await fetch(`${API_BASE_URL}/api/competition/${competitionId}`);
       if (response.ok) {
         const data = await response.json();
         setCompetition(data);
