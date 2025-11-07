@@ -221,6 +221,19 @@ class Database {
     });
   }
 
+  async clearVotes(competitionId) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        'DELETE FROM votes WHERE competition_id = ?',
+        [competitionId],
+        function(err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+  }
+
   // Vote methods
   async addVote(voteId, competitionId, teamId, voterSession, ipAddress) {
     return new Promise((resolve, reject) => {

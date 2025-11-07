@@ -63,12 +63,25 @@ const VotingInterface = () => {
     }
   }, [competitionId]);
 
+  const handleCompetitionReset = useCallback((data) => {
+    if (data.competitionId === competitionId) {
+      // Reset voting states for new competition
+      setTeams(data.teams?.filter(team => team.status === 'active') || []);
+      setVoted(false);
+      setSelectedTeam(null);
+      setError(null);
+      // Clear local storage vote record
+      localStorage.removeItem(`has-voted-${competitionId}`);
+    }
+  }, [competitionId]);
+
   const setupSocketListeners = useCallback(() => {
     socketManager.on('voteUpdate', handleVoteUpdate);
     socketManager.on('teamEliminated', handleTeamEliminated);
     socketManager.on('competitionComplete', handleCompetitionComplete);
+    socketManager.on('competitionReset', handleCompetitionReset);
     socketManager.on('currentState', handleCurrentState);
-  }, [handleVoteUpdate, handleTeamEliminated, handleCompetitionComplete, handleCurrentState]);
+  }, [handleVoteUpdate, handleTeamEliminated, handleCompetitionComplete, handleCompetitionReset, handleCurrentState]);
 
   const handleTeamSelect = (team) => {
     if (!voted && !voting) {
@@ -138,9 +151,10 @@ const VotingInterface = () => {
       socketManager.off('voteUpdate', handleVoteUpdate);
       socketManager.off('teamEliminated', handleTeamEliminated);
       socketManager.off('competitionComplete', handleCompetitionComplete);
+      socketManager.off('competitionReset', handleCompetitionReset);
       socketManager.off('currentState', handleCurrentState);
     };
-  }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleTeamEliminated, handleCompetitionComplete, handleCurrentState]);
+  }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleTeamEliminated, handleCompetitionComplete, handleCompetitionReset, handleCurrentState]);
 
   if (loading) {
     return (

@@ -439,15 +439,22 @@ app.post('/api/competition/:id/reset', async (req, res) => {
       winner_team_id: null
     });
 
-    // Reset all teams
+    // Reset all teams (status and vote counts)
     await db.resetTeams(competitionId);
     
-    // Clear votes (optional - keep for history)
-    // We'll keep votes for historical purposes but they won't affect new rounds
+    // Clear all votes - this is essential for proper reset!
+    await db.clearVotes(competitionId);
     
+    // Remove from active competitions
     activeCompetitions.delete(competitionId);
     
-    io.emit('competitionReset', { competitionId });
+    // Get updated teams with 0 votes
+    const updatedTeams = await db.getTeams(competitionId);
+    
+    io.emit('competitionReset', { 
+      competitionId,
+      teams: updatedTeams 
+    });
     
     res.json({ success: true });
   } catch (error) {

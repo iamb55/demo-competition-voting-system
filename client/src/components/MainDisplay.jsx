@@ -84,13 +84,23 @@ const MainDisplay = () => {
     }
   }, [competitionId]);
 
+  const handleCompetitionReset = useCallback((data) => {
+    if (data.competitionId === competitionId) {
+      // Reset all states to initial values
+      setTeams(data.teams || []);
+      setEliminatedTeams(new Set());
+      setWinner(null);
+    }
+  }, [competitionId]);
+
   const setupSocketListeners = useCallback(() => {
     socketManager.on('voteUpdate', handleVoteUpdate);
     socketManager.on('teamEliminated', handleTeamEliminated);
     socketManager.on('roundReset', handleRoundReset);
     socketManager.on('competitionComplete', handleCompetitionComplete);
+    socketManager.on('competitionReset', handleCompetitionReset);
     socketManager.on('currentState', handleCurrentState);
-  }, [handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCurrentState]);
+  }, [handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCompetitionReset, handleCurrentState]);
 
   useEffect(() => {
     fetchCompetition();
@@ -102,9 +112,10 @@ const MainDisplay = () => {
       socketManager.off('teamEliminated', handleTeamEliminated);
       socketManager.off('roundReset', handleRoundReset);
       socketManager.off('competitionComplete', handleCompetitionComplete);
+      socketManager.off('competitionReset', handleCompetitionReset);
       socketManager.off('currentState', handleCurrentState);
     };
-  }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCurrentState]);
+  }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCompetitionReset, handleCurrentState]);
 
   if (loading) {
     return (
