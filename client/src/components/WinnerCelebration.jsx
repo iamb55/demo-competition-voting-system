@@ -168,20 +168,14 @@ const WinnerCelebration = ({ winner, finalRanking, onCelebrationEnd }) => {
         {stage === 'results' && showResults && (
           <div className="results-stage">
             <div className="final-results">
-              <h2>🏆 Final Rankings</h2>
-              <div className="rankings-list">
-                {finalRanking && finalRanking.map((team, index) => (
-                  <div key={team.teamId} className={`ranking-item ${index === 0 ? 'winner-item' : ''}`}>
-                    <div className="rank-position">
-                      {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
-                    </div>
-                    <div className="team-info">
-                      <span className="team-name">{team.teamName}</span>
-                      <span className="team-votes">{team.finalVotes} votes</span>
-                    </div>
-                    {team.status === 'active' && <div className="winner-badge">WINNER!</div>}
-                  </div>
-                ))}
+              <h2>🏆 Competition Complete!</h2>
+              <div className="winner-focus">
+                <div className="winner-announcement-large">
+                  <div className="winner-crown">👑</div>
+                  <div className="winner-name">{winner?.name}</div>
+                  <div className="winner-subtitle">CHAMPION!</div>
+                  <div className="winner-votes">{winner?.votes || 0} votes</div>
+                </div>
               </div>
               
               <button className="close-celebration" onClick={handleClose}>

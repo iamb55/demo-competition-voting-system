@@ -227,8 +227,16 @@ async function checkForElimination(competitionId) {
 
 async function endCompetition(competitionId) {
   try {
+    // First ensure vote counts are up to date
+    await updateVoteCounts(competitionId);
+    
+    // Get teams with updated vote counts
     const teams = await db.getTeams(competitionId);
-    const winner = teams.find(team => team.status === 'active');
+    const activeTeams = teams.filter(team => team.status === 'active');
+    
+    // Determine winner by vote count (highest votes wins)
+    activeTeams.sort((a, b) => (b.votes || 0) - (a.votes || 0));
+    const winner = activeTeams[0];
     
     if (winner) {
       // Update competition status
