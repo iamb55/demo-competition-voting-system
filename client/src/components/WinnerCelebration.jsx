@@ -5,7 +5,6 @@ import './WinnerCelebration.css';
 const WinnerCelebration = ({ winner, finalRanking, onCelebrationEnd }) => {
   const [stage, setStage] = useState('buildup'); // buildup -> reveal -> celebration -> results
   const [showWinner, setShowWinner] = useState(false);
-  const [showConfetti, setShowConfetti] = useState(false);
   const [showResults, setShowResults] = useState(false);
 
   useEffect(() => {
@@ -22,7 +21,6 @@ const WinnerCelebration = ({ winner, finalRanking, onCelebrationEnd }) => {
       
       // Trigger confetti burst
       triggerConfettiBurst();
-      setShowConfetti(true);
       
       await new Promise(resolve => setTimeout(resolve, 2000));
 
