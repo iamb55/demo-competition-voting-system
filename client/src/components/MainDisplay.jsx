@@ -15,20 +15,6 @@ const MainDisplay = () => {
 
   const competitionId = searchParams.get('competition') || 'demo-competition';
 
-  useEffect(() => {
-    fetchCompetition();
-    setupSocketListeners();
-    socketManager.connect();
-
-    return () => {
-      socketManager.off('voteUpdate', handleVoteUpdate);
-      socketManager.off('teamEliminated', handleTeamEliminated);
-      socketManager.off('roundReset', handleRoundReset);
-      socketManager.off('competitionComplete', handleCompetitionComplete);
-      socketManager.off('currentState', handleCurrentState);
-    };
-  }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCurrentState]);
-
   const fetchCompetition = useCallback(async () => {
     try {
       const response = await fetch(`http://localhost:3001/api/competition/${competitionId}`);
@@ -104,6 +90,20 @@ const MainDisplay = () => {
     socketManager.on('competitionComplete', handleCompetitionComplete);
     socketManager.on('currentState', handleCurrentState);
   }, [handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCurrentState]);
+
+  useEffect(() => {
+    fetchCompetition();
+    setupSocketListeners();
+    socketManager.connect();
+
+    return () => {
+      socketManager.off('voteUpdate', handleVoteUpdate);
+      socketManager.off('teamEliminated', handleTeamEliminated);
+      socketManager.off('roundReset', handleRoundReset);
+      socketManager.off('competitionComplete', handleCompetitionComplete);
+      socketManager.off('currentState', handleCurrentState);
+    };
+  }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCurrentState]);
 
   if (loading) {
     return (

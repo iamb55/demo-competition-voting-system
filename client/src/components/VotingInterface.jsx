@@ -17,33 +17,6 @@ const VotingInterface = () => {
 
   const competitionId = searchParams.get('competition') || 'demo-competition';
 
-  useEffect(() => {
-    // Generate or get voter session ID
-    let sessionId = localStorage.getItem(`voter-session-${competitionId}`);
-    if (!sessionId) {
-      sessionId = `voter_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem(`voter-session-${competitionId}`, sessionId);
-    }
-    setVoterSession(sessionId);
-
-    // Check if already voted
-    const hasVoted = localStorage.getItem(`has-voted-${competitionId}`);
-    if (hasVoted) {
-      setVoted(true);
-    }
-
-    fetchCompetition();
-    setupSocketListeners();
-    socketManager.connect();
-
-    return () => {
-      socketManager.off('voteUpdate', handleVoteUpdate);
-      socketManager.off('teamEliminated', handleTeamEliminated);
-      socketManager.off('competitionComplete', handleCompetitionComplete);
-      socketManager.off('currentState', handleCurrentState);
-    };
-  }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleTeamEliminated, handleCompetitionComplete, handleCurrentState]);
-
   const fetchCompetition = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/competition/${competitionId}`);
@@ -141,6 +114,33 @@ const VotingInterface = () => {
     setError(null);
     fetchCompetition();
   };
+
+  useEffect(() => {
+    // Generate or get voter session ID
+    let sessionId = localStorage.getItem(`voter-session-${competitionId}`);
+    if (!sessionId) {
+      sessionId = `voter_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem(`voter-session-${competitionId}`, sessionId);
+    }
+    setVoterSession(sessionId);
+
+    // Check if already voted
+    const hasVoted = localStorage.getItem(`has-voted-${competitionId}`);
+    if (hasVoted) {
+      setVoted(true);
+    }
+
+    fetchCompetition();
+    setupSocketListeners();
+    socketManager.connect();
+
+    return () => {
+      socketManager.off('voteUpdate', handleVoteUpdate);
+      socketManager.off('teamEliminated', handleTeamEliminated);
+      socketManager.off('competitionComplete', handleCompetitionComplete);
+      socketManager.off('currentState', handleCurrentState);
+    };
+  }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleTeamEliminated, handleCompetitionComplete, handleCurrentState]);
 
   if (loading) {
     return (
