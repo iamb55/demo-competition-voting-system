@@ -464,6 +464,47 @@ app.post('/api/competition/:id/reset', async (req, res) => {
   }
 });
 
+// Manually end competition (declare winner)
+app.post('/api/competition/:id/end', async (req, res) => {
+  try {
+    const competitionId = req.params.id;
+    
+    // Check if competition exists and is active
+    const competition = await db.getCompetition(competitionId);
+    if (!competition) {
+      return res.status(404).json({ error: 'Competition not found' });
+    }
+
+    if (competition.status !== 'voting') {
+      return res.status(400).json({ error: 'Competition is not currently active' });
+    }
+
+    // Get current teams and determine winner (team with most votes)
+    const teams = await db.getTeams(competitionId);
+    const activeTeams = teams.filter(team => team.status === 'active');
+    
+    if (activeTeams.length === 0) {
+      return res.status(400).json({ error: 'No active teams found' });
+    }
+
+    // Sort teams by votes (descending) to find winner
+    activeTeams.sort((a, b) => (b.votes || 0) - (a.votes || 0));
+    const winner = activeTeams[0];
+
+    // Manually trigger the end competition process
+    await endCompetition(competitionId);
+    
+    res.json({ 
+      success: true,
+      winner: winner,
+      message: `Competition ended! Winner: ${winner.name} with ${winner.votes || 0} votes`
+    });
+  } catch (error) {
+    console.error('Error ending competition:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Socket.io connection handling
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);

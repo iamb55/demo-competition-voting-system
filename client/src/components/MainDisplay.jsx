@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import socketManager from '../utils/socket';
 import { API_BASE_URL } from '../utils/api';
+import WinnerCelebration from './WinnerCelebration';
 import './MainDisplay.css';
 
 const MainDisplay = () => {
@@ -12,6 +13,8 @@ const MainDisplay = () => {
   const [error, setError] = useState(null);
   const [eliminatedTeams, setEliminatedTeams] = useState(new Set());
   const [winner, setWinner] = useState(null);
+  const [finalRanking, setFinalRanking] = useState(null);
+  const [showCelebration, setShowCelebration] = useState(false);
   const [showVoteCounts, setShowVoteCounts] = useState(false);
 
   const competitionId = searchParams.get('competition') || 'demo-competition';
@@ -67,14 +70,8 @@ const MainDisplay = () => {
   const handleCompetitionComplete = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setWinner(data.winner);
-      // Trigger confetti
-      if (window.confetti) {
-        window.confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 }
-        });
-      }
+      setFinalRanking(data.finalRanking);
+      setShowCelebration(true);
     }
   }, [competitionId]);
 
@@ -90,8 +87,15 @@ const MainDisplay = () => {
       setTeams(data.teams || []);
       setEliminatedTeams(new Set());
       setWinner(null);
+      setFinalRanking(null);
+      setShowCelebration(false);
     }
   }, [competitionId]);
+
+  const handleCelebrationEnd = useCallback(() => {
+    setShowCelebration(false);
+    // Keep winner and ranking data for display
+  }, []);
 
   const setupSocketListeners = useCallback(() => {
     socketManager.on('voteUpdate', handleVoteUpdate);
@@ -216,6 +220,15 @@ const MainDisplay = () => {
         <div className="final-round-indicator">
           <p>🔥 FINAL ROUND! 🔥</p>
         </div>
+      )}
+
+      {/* Winner Celebration Overlay */}
+      {showCelebration && winner && (
+        <WinnerCelebration 
+          winner={winner}
+          finalRanking={finalRanking}
+          onCelebrationEnd={handleCelebrationEnd}
+        />
       )}
     </div>
   );

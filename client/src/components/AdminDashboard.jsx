@@ -205,6 +205,36 @@ const AdminDashboard = () => {
     }
   };
 
+  const endCompetition = async () => {
+    if (!currentCompetition) return;
+
+    // Confirm before ending
+    if (!window.confirm('Are you sure you want to end this competition? The team with the most votes will be declared the winner.')) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/competition/${currentCompetition.id}/end`, {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setSuccess(`Competition ended! Winner: ${data.winner?.name || 'Unknown'}`);
+        await loadCompetition(currentCompetition.id);
+        fetchHistory();
+      } else {
+        setError(data.error || 'Failed to end competition');
+      }
+    } catch (err) {
+      setError('Failed to end competition');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const openMainDisplay = () => {
     if (currentCompetition) {
       const url = `/?competition=${currentCompetition.id}`;
@@ -399,6 +429,16 @@ const AdminDashboard = () => {
                   className="start-button"
                 >
                   Start Voting
+                </button>
+              )}
+              
+              {currentCompetition.status === 'voting' && teams.filter(team => team.status === 'active').length > 1 && (
+                <button 
+                  onClick={endCompetition} 
+                  disabled={loading}
+                  className="end-button"
+                >
+                  🏆 End Competition
                 </button>
               )}
               
