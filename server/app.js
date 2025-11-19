@@ -123,6 +123,201 @@ if (NODE_ENV === 'production') {
 // Store active competitions and their state
 const activeCompetitions = new Map();
 
+// Queue management functions
+function getRandomTeam(teams, excludeIds = []) {
+  const available = teams.filter(team => !excludeIds.includes(team.id));
+  if (available.length === 0) return null;
+  return available[Math.floor(Math.random() * available.length)];
+}
+
+async function initializeQueue(competitionId) {
+  try {
+    // Clear existing queue positions
+    await db.clearQueuePositions(competitionId);
+    
+    // Get all teams that are not done
+    const availableTeams = await db.getTeamsNotDone(competitionId);
+    
+    if (availableTeams.length === 0) {
+      return { current: null, next: null, afterNext: null };
+    }
+
+    // Randomly select first team
+    const current = getRandomTeam(availableTeams);
+    if (!current) {
+      return { current: null, next: null, afterNext: null };
+    }
+
+    // Randomly select second team (excluding current)
+    const next = getRandomTeam(availableTeams, [current.id]);
+    
+    // Randomly select third team (excluding current and next)
+    const afterNext = next ? getRandomTeam(availableTeams, [current.id, next.id]) : null;
+
+    // Set queue positions in database
+    if (current) await db.setTeamQueuePosition(current.id, 'current');
+    if (next) await db.setTeamQueuePosition(next.id, 'next');
+    if (afterNext) await db.setTeamQueuePosition(afterNext.id, 'after_next');
+
+    return { current, next, afterNext };
+  } catch (error) {
+    console.error('Error initializing queue:', error);
+    return { current: null, next: null, afterNext: null };
+  }
+}
+
+async function shiftQueue(competitionId) {
+  try {
+    console.log(`Shifting queue for competition ${competitionId} (current team done)`);
+    
+    // Get fresh team data
+    const teams = await db.getTeams(competitionId);
+    console.log(`Found ${teams.length} teams total`);
+    
+    // Find teams in queue that are NOT done (save their IDs and info before clearing positions)
+    const nextTeam = teams.find(t => t.queue_position === 'next' && t.is_done === 0);
+    const afterNextTeam = teams.find(t => t.queue_position === 'after_next' && t.is_done === 0);
+    
+    console.log(`Next team: ${nextTeam?.name || 'none'}, After next: ${afterNextTeam?.name || 'none'}`);
+    
+    const nextTeamId = nextTeam?.id || null;
+    const afterNextTeamId = afterNextTeam?.id || null;
+
+    // Clear ALL queue positions first (including the done team's position)
+    for (const team of teams) {
+      if (team.queue_position === 'current' || team.queue_position === 'next' || team.queue_position === 'after_next') {
+        await db.setTeamQueuePosition(team.id, null);
+      }
+    }
+
+    // Now reassign positions: next -> current, after_next -> next
+    if (nextTeamId) {
+      console.log(`Setting ${nextTeam?.name} as current`);
+      await db.setTeamQueuePosition(nextTeamId, 'current');
+    }
+
+    if (afterNextTeamId) {
+      console.log(`Setting ${afterNextTeam?.name} as next`);
+      await db.setTeamQueuePosition(afterNextTeamId, 'next');
+    }
+
+    // Find new after_next from available teams (excluding new current and next)
+    const availableTeams = await db.getTeamsNotDone(competitionId);
+    console.log(`Available teams for after_next: ${availableTeams.length}`);
+    const excludeIds = [nextTeamId, afterNextTeamId].filter(Boolean);
+    const newAfterNext = getRandomTeam(availableTeams, excludeIds);
+
+    if (newAfterNext) {
+      console.log(`Setting ${newAfterNext.name} as after_next`);
+      await db.setTeamQueuePosition(newAfterNext.id, 'after_next');
+    } else {
+      console.log('No available team for after_next');
+    }
+
+    // Emit queue update to competition room
+    const updatedTeams = await db.getTeams(competitionId);
+    console.log(`Emitting queueUpdate to room ${competitionId} with ${updatedTeams.length} teams`);
+    
+    // Log queue positions for debugging
+    const current = updatedTeams.find(t => t.queue_position === 'current');
+    const next = updatedTeams.find(t => t.queue_position === 'next');
+    const afterNext = updatedTeams.find(t => t.queue_position === 'after_next');
+    console.log(`Queue after shift - Current: ${current?.name || 'none'}, Next: ${next?.name || 'none'}, After Next: ${afterNext?.name || 'none'}`);
+    
+    io.to(competitionId).emit('queueUpdate', {
+      competitionId,
+      teams: updatedTeams
+    });
+
+    return updatedTeams;
+  } catch (error) {
+    console.error('Error shifting queue:', error);
+    return [];
+  }
+}
+
+async function handleNextTeamDone(competitionId) {
+  try {
+    console.log(`Handling next team done for competition ${competitionId}`);
+    
+    const teams = await db.getTeams(competitionId);
+    const currentTeam = teams.find(t => t.queue_position === 'current' && t.is_done === 0);
+    const afterNextTeam = teams.find(t => t.queue_position === 'after_next' && t.is_done === 0);
+    
+    // Clear next and after_next positions
+    for (const team of teams) {
+      if (team.queue_position === 'next' || team.queue_position === 'after_next') {
+        await db.setTeamQueuePosition(team.id, null);
+      }
+    }
+    
+    // Move after_next to next
+    if (afterNextTeam) {
+      console.log(`Moving ${afterNextTeam.name} from after_next to next`);
+      await db.setTeamQueuePosition(afterNextTeam.id, 'next');
+    }
+    
+    // Find new after_next
+    const availableTeams = await db.getTeamsNotDone(competitionId);
+    const excludeIds = [currentTeam?.id, afterNextTeam?.id].filter(Boolean);
+    const newAfterNext = getRandomTeam(availableTeams, excludeIds);
+    
+    if (newAfterNext) {
+      console.log(`Setting ${newAfterNext.name} as after_next`);
+      await db.setTeamQueuePosition(newAfterNext.id, 'after_next');
+    }
+    
+    const updatedTeams = await db.getTeams(competitionId);
+    io.to(competitionId).emit('queueUpdate', {
+      competitionId,
+      teams: updatedTeams
+    });
+    
+    return updatedTeams;
+  } catch (error) {
+    console.error('Error handling next team done:', error);
+    return [];
+  }
+}
+
+async function handleAfterNextTeamDone(competitionId) {
+  try {
+    console.log(`Handling after_next team done for competition ${competitionId}`);
+    
+    const teams = await db.getTeams(competitionId);
+    const currentTeam = teams.find(t => t.queue_position === 'current' && t.is_done === 0);
+    const nextTeam = teams.find(t => t.queue_position === 'next' && t.is_done === 0);
+    
+    // Clear after_next position
+    for (const team of teams) {
+      if (team.queue_position === 'after_next') {
+        await db.setTeamQueuePosition(team.id, null);
+      }
+    }
+    
+    // Find new after_next
+    const availableTeams = await db.getTeamsNotDone(competitionId);
+    const excludeIds = [currentTeam?.id, nextTeam?.id].filter(Boolean);
+    const newAfterNext = getRandomTeam(availableTeams, excludeIds);
+    
+    if (newAfterNext) {
+      console.log(`Setting ${newAfterNext.name} as after_next`);
+      await db.setTeamQueuePosition(newAfterNext.id, 'after_next');
+    }
+    
+    const updatedTeams = await db.getTeams(competitionId);
+    io.to(competitionId).emit('queueUpdate', {
+      competitionId,
+      teams: updatedTeams
+    });
+    
+    return updatedTeams;
+  } catch (error) {
+    console.error('Error handling after_next team done:', error);
+    return [];
+  }
+}
+
 // Utility functions
 function generateVotingUrl(competitionId) {
   return `${CLIENT_URL}/vote?competition=${competitionId}`;
@@ -335,7 +530,7 @@ app.post('/api/competition', async (req, res) => {
   }
 });
 
-// Start competition voting
+// Start competition (initialize presentation queue)
 app.post('/api/competition/:id/start', async (req, res) => {
   try {
     const competitionId = req.params.id;
@@ -343,6 +538,12 @@ app.post('/api/competition/:id/start', async (req, res) => {
     await db.updateCompetitionStatus(competitionId, 'voting', {
       started_at: new Date().toISOString()
     });
+
+    // Reset all teams (clear done status and queue positions)
+    await db.resetTeams(competitionId);
+
+    // Initialize the presentation queue
+    const queue = await initializeQueue(competitionId);
 
     // Add to active competitions
     activeCompetitions.set(competitionId, {
@@ -352,17 +553,16 @@ app.post('/api/competition/:id/start', async (req, res) => {
       expectedParticipants: req.body.expectedParticipants || 50
     });
 
-    // Reset all team votes
-    await db.resetTeams(competitionId);
+    // Get updated teams with queue positions
+    const teams = await db.getTeams(competitionId);
     
-    const teams = await updateVoteCounts(competitionId);
-    
-    io.emit('competitionStarted', {
+    io.to(competitionId).emit('competitionStarted', {
       competitionId,
-      teams: teams.filter(t => t.status === 'active')
+      teams,
+      queue
     });
 
-    res.json({ success: true });
+    res.json({ success: true, queue, teams });
   } catch (error) {
     console.error('Error starting competition:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -417,20 +617,39 @@ app.get('/api/history', async (req, res) => {
   try {
     const history = await db.getCompetitionHistory();
     
-    // Also get current active competitions
-    const activeCompetitionsArray = Array.from(activeCompetitions.entries()).map(([id, data]) => ({
-      id,
-      name: `Active Competition ${id.substring(0, 8)}...`,
-      status: data.status,
-      created_at: new Date(data.startTime).toISOString()
-    }));
+    // Get active competition IDs to filter out duplicates
+    const activeCompetitionIds = new Set(activeCompetitions.keys());
     
-    // Combine active and completed competitions
-    const allCompetitions = [...activeCompetitionsArray, ...history];
+    // Filter out competitions that are already in activeCompetitions Map
+    // (they're already in the database with status 'voting')
+    const filteredHistory = history.filter(comp => !activeCompetitionIds.has(comp.id));
     
-    res.json(allCompetitions);
+    res.json(filteredHistory);
   } catch (error) {
     console.error('Error getting history:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Delete competition
+app.delete('/api/competition/:id', async (req, res) => {
+  try {
+    const competitionId = req.params.id;
+    
+    // Remove from active competitions if present
+    activeCompetitions.delete(competitionId);
+    
+    // Delete from database
+    await db.deleteCompetition(competitionId);
+    
+    // Emit deletion event
+    io.to(competitionId).emit('competitionDeleted', {
+      competitionId
+    });
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting competition:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -448,7 +667,7 @@ app.post('/api/competition/:id/reset', async (req, res) => {
       last_reset: new Date().toISOString()
     });
 
-    // Reset all teams (status and vote counts)
+    // Reset all teams (status, vote counts, queue positions, and done status)
     await db.resetTeams(competitionId);
     
     // Clear all votes - this is essential for proper reset!
@@ -468,6 +687,174 @@ app.post('/api/competition/:id/reset', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Error resetting competition:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Mark team as done/undone
+app.post('/api/competition/:id/team/:teamId/done', async (req, res) => {
+  try {
+    const competitionId = req.params.id;
+    const teamId = req.params.teamId;
+    const { isDone } = req.body;
+
+    // Get team info BEFORE marking as done to check queue position
+    const teams = await db.getTeams(competitionId);
+    const team = teams.find(t => t.id === teamId);
+    
+    if (!team) {
+      return res.status(404).json({ error: 'Team not found' });
+    }
+    
+    const wasInQueue = team && team.queue_position;
+    console.log(`Marking team ${team.name} (${teamId}) as ${isDone ? 'done' : 'undone'}. Was in queue: ${wasInQueue}, Position: ${team.queue_position}`);
+
+    // Mark team as done or undone
+    await db.markTeamDone(teamId, isDone);
+
+    let updatedTeams;
+    
+    if (isDone) {
+      // If marking as done and team was in queue, handle queue update based on position
+      if (wasInQueue) {
+        const queuePosition = team.queue_position;
+        console.log(`Team ${team.name} was in queue (${queuePosition}), updating queue...`);
+        
+        if (queuePosition === 'current') {
+          // Current team done - shift entire queue
+          updatedTeams = await shiftQueue(competitionId);
+        } else if (queuePosition === 'next') {
+          // Next team done - move after_next to next, find new after_next
+          updatedTeams = await handleNextTeamDone(competitionId);
+        } else if (queuePosition === 'after_next') {
+          // After next team done - just find new after_next
+          updatedTeams = await handleAfterNextTeamDone(competitionId);
+        } else {
+          // Unknown position, just emit update
+          updatedTeams = await db.getTeams(competitionId);
+          io.to(competitionId).emit('queueUpdate', {
+            competitionId,
+            teams: updatedTeams
+          });
+        }
+      } else {
+        // Just emit update to competition room
+        updatedTeams = await db.getTeams(competitionId);
+        console.log(`Team ${team.name} not in queue, emitting update to room ${competitionId}`);
+        io.to(competitionId).emit('queueUpdate', {
+          competitionId,
+          teams: updatedTeams
+        });
+      }
+      
+      // Check if all teams are done (just show confetti, don't complete competition)
+      const allDone = updatedTeams.every(t => t.is_done === 1);
+      if (allDone && updatedTeams.length > 0) {
+        // All teams are done, emit event for confetti (but don't complete competition)
+        io.to(competitionId).emit('allTeamsDone', {
+          competitionId,
+          teams: updatedTeams
+        });
+      }
+    } else {
+      // Marking as undone - add team back to queue, filling empty positions
+      updatedTeams = await db.getTeams(competitionId);
+      const undoneTeam = updatedTeams.find(t => t.id === teamId);
+      
+      if (!undoneTeam || undoneTeam.is_done !== 0) {
+        // Team wasn't properly marked as undone, just emit update
+        updatedTeams = await db.getTeams(competitionId);
+        io.to(competitionId).emit('queueUpdate', {
+          competitionId,
+          teams: updatedTeams
+        });
+        return res.json({ success: true, teams: updatedTeams });
+      }
+      
+      const currentTeam = updatedTeams.find(t => t.queue_position === 'current' && t.is_done === 0);
+      const nextTeam = updatedTeams.find(t => t.queue_position === 'next' && t.is_done === 0);
+      const afterNextTeam = updatedTeams.find(t => t.queue_position === 'after_next' && t.is_done === 0);
+      
+      const hasQueue = currentTeam || nextTeam || afterNextTeam;
+      
+      if (!hasQueue) {
+        // No queue exists, reinitialize it (this will include the undone team)
+        console.log(`No queue exists, reinitializing for competition ${competitionId}`);
+        await initializeQueue(competitionId);
+        updatedTeams = await db.getTeams(competitionId);
+      } else {
+        // Queue exists, fill any empty positions, prioritizing the undone team
+        const availableTeams = await db.getTeamsNotDone(competitionId);
+        
+        if (!currentTeam) {
+          // No current - prefer the undone team, otherwise random
+          if (availableTeams.some(t => t.id === undoneTeam.id)) {
+            console.log(`Setting ${undoneTeam.name} as current (was undone)`);
+            await db.setTeamQueuePosition(undoneTeam.id, 'current');
+          } else {
+            const excludeIds = [nextTeam?.id, afterNextTeam?.id].filter(Boolean);
+            const newCurrent = getRandomTeam(availableTeams, excludeIds);
+            if (newCurrent) {
+              console.log(`Setting ${newCurrent.name} as current`);
+              await db.setTeamQueuePosition(newCurrent.id, 'current');
+            }
+          }
+        }
+        
+        // Refresh to get updated current
+        updatedTeams = await db.getTeams(competitionId);
+        const updatedCurrent = updatedTeams.find(t => t.queue_position === 'current' && t.is_done === 0);
+        
+        if (!nextTeam) {
+          // No next - prefer the undone team if not already in queue
+          const inQueue = updatedCurrent?.id === undoneTeam.id || afterNextTeam?.id === undoneTeam.id;
+          if (!inQueue && availableTeams.some(t => t.id === undoneTeam.id)) {
+            console.log(`Setting ${undoneTeam.name} as next (was undone)`);
+            await db.setTeamQueuePosition(undoneTeam.id, 'next');
+          } else {
+            const excludeIds = [updatedCurrent?.id, afterNextTeam?.id].filter(Boolean);
+            const newNext = getRandomTeam(availableTeams, excludeIds);
+            if (newNext) {
+              console.log(`Setting ${newNext.name} as next`);
+              await db.setTeamQueuePosition(newNext.id, 'next');
+            }
+          }
+        }
+        
+        // Refresh to get updated next
+        updatedTeams = await db.getTeams(competitionId);
+        const updatedNext = updatedTeams.find(t => t.queue_position === 'next' && t.is_done === 0);
+        
+        if (!afterNextTeam) {
+          // No after_next - prefer the undone team if not already in queue
+          const inQueue = updatedCurrent?.id === undoneTeam.id || updatedNext?.id === undoneTeam.id;
+          if (!inQueue && availableTeams.some(t => t.id === undoneTeam.id)) {
+            console.log(`Setting ${undoneTeam.name} as after_next (was undone)`);
+            await db.setTeamQueuePosition(undoneTeam.id, 'after_next');
+          } else {
+            const excludeIds = [updatedCurrent?.id, updatedNext?.id].filter(Boolean);
+            const newAfterNext = getRandomTeam(availableTeams, excludeIds);
+            if (newAfterNext) {
+              console.log(`Setting ${newAfterNext.name} as after_next`);
+              await db.setTeamQueuePosition(newAfterNext.id, 'after_next');
+            }
+          }
+        }
+        
+        // Get fresh teams after all updates
+        updatedTeams = await db.getTeams(competitionId);
+      }
+      
+      // Emit update to competition room
+      io.to(competitionId).emit('queueUpdate', {
+        competitionId,
+        teams: updatedTeams
+      });
+    }
+
+    res.json({ success: true, teams: updatedTeams });
+  } catch (error) {
+    console.error('Error marking team done:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

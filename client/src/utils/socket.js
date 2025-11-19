@@ -64,6 +64,14 @@ class SocketManager {
       this.socket.on('currentState', (data) => {
         this.emit('currentState', data);
       });
+
+      this.socket.on('queueUpdate', (data) => {
+        this.emit('queueUpdate', data);
+      });
+
+      this.socket.on('allTeamsDone', (data) => {
+        this.emit('allTeamsDone', data);
+      });
     }
     return this.socket;
   }

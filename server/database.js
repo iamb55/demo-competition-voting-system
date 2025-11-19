@@ -35,6 +35,8 @@ class Database {
           status TEXT DEFAULT 'active',
           votes INTEGER DEFAULT 0,
           eliminated_at DATETIME,
+          queue_position TEXT,
+          is_done INTEGER DEFAULT 0,
           FOREIGN KEY (competition_id) REFERENCES competitions (id)
         )
       `);
@@ -75,6 +77,23 @@ class Database {
         // Ignore error if column already exists
         if (err && !err.message.includes('duplicate column name')) {
           console.warn('Error adding last_reset column:', err.message);
+        }
+      });
+
+      // Add queue_position and is_done columns to existing teams table (for backwards compatibility)
+      this.db.run(`
+        ALTER TABLE teams ADD COLUMN queue_position TEXT
+      `, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.warn('Error adding queue_position column:', err.message);
+        }
+      });
+
+      this.db.run(`
+        ALTER TABLE teams ADD COLUMN is_done INTEGER DEFAULT 0
+      `, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.warn('Error adding is_done column:', err.message);
         }
       });
     });
@@ -222,11 +241,63 @@ class Database {
   async resetTeams(competitionId) {
     return new Promise((resolve, reject) => {
       this.db.run(
-        'UPDATE teams SET votes = 0, status = ?, eliminated_at = NULL WHERE competition_id = ?',
+        'UPDATE teams SET votes = 0, status = ?, eliminated_at = NULL, queue_position = NULL, is_done = 0 WHERE competition_id = ?',
         ['active', competitionId],
         function(err) {
           if (err) reject(err);
           else resolve(this.changes);
+        }
+      );
+    });
+  }
+
+  async setTeamQueuePosition(teamId, queuePosition) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        'UPDATE teams SET queue_position = ? WHERE id = ?',
+        [queuePosition, teamId],
+        function(err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+  }
+
+  async clearQueuePositions(competitionId) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        'UPDATE teams SET queue_position = NULL WHERE competition_id = ?',
+        [competitionId],
+        function(err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+  }
+
+  async markTeamDone(teamId, isDone) {
+    return new Promise((resolve, reject) => {
+      this.db.run(
+        'UPDATE teams SET is_done = ?, queue_position = NULL WHERE id = ?',
+        [isDone ? 1 : 0, teamId],
+        function(err) {
+          if (err) reject(err);
+          else resolve(this.changes);
+        }
+      );
+    });
+  }
+
+  async getTeamsNotDone(competitionId) {
+    return new Promise((resolve, reject) => {
+      this.db.all(
+        'SELECT * FROM teams WHERE competition_id = ? AND is_done = 0 ORDER BY position',
+        [competitionId],
+        (err, rows) => {
+          if (err) reject(err);
+          else resolve(rows);
         }
       );
     });
@@ -288,11 +359,11 @@ class Database {
   async getAllVoteCounts(competitionId) {
     return new Promise((resolve, reject) => {
       this.db.all(
-        `SELECT t.id, t.name, t.status, COUNT(v.id) as votes 
+        `SELECT t.id, t.name, t.status, t.queue_position, t.is_done, COUNT(v.id) as votes 
          FROM teams t 
          LEFT JOIN votes v ON t.id = v.team_id 
          WHERE t.competition_id = ? 
-         GROUP BY t.id, t.name, t.status 
+         GROUP BY t.id, t.name, t.status, t.queue_position, t.is_done
          ORDER BY t.position`,
         [competitionId],
         (err, rows) => {
@@ -333,6 +404,55 @@ class Database {
           })));
         }
       );
+    });
+  }
+
+  async deleteCompetition(competitionId) {
+    return new Promise((resolve, reject) => {
+      this.db.serialize(() => {
+        this.db.run('BEGIN TRANSACTION');
+        
+        // Delete votes
+        this.db.run('DELETE FROM votes WHERE competition_id = ?', [competitionId], (err) => {
+          if (err) {
+            this.db.run('ROLLBACK');
+            reject(err);
+            return;
+          }
+        });
+
+        // Delete teams
+        this.db.run('DELETE FROM teams WHERE competition_id = ?', [competitionId], (err) => {
+          if (err) {
+            this.db.run('ROLLBACK');
+            reject(err);
+            return;
+          }
+        });
+
+        // Delete competition results
+        this.db.run('DELETE FROM competition_results WHERE competition_id = ?', [competitionId], (err) => {
+          if (err) {
+            this.db.run('ROLLBACK');
+            reject(err);
+            return;
+          }
+        });
+
+        // Delete competition
+        this.db.run('DELETE FROM competitions WHERE id = ?', [competitionId], (err) => {
+          if (err) {
+            this.db.run('ROLLBACK');
+            reject(err);
+            return;
+          }
+        });
+
+        this.db.run('COMMIT', (err) => {
+          if (err) reject(err);
+          else resolve(true);
+        });
+      });
     });
   }
 

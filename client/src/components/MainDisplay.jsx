@@ -92,6 +92,28 @@ const MainDisplay = () => {
     }
   }, [competitionId]);
 
+  const handleQueueUpdate = useCallback((data) => {
+    console.log('MainDisplay received queueUpdate:', data);
+    if (data.competitionId === competitionId) {
+      console.log('Updating teams with queue positions:', data.teams);
+      setTeams(data.teams);
+    }
+  }, [competitionId]);
+
+  const handleCompetitionStarted = useCallback((data) => {
+    if (data.competitionId === competitionId) {
+      setTeams(data.teams);
+    }
+  }, [competitionId]);
+
+  const handleAllTeamsDone = useCallback((data) => {
+    if (data.competitionId === competitionId) {
+      setTeams(data.teams);
+      // Just show confetti, don't set winner or complete competition
+      setShowCelebration(true);
+    }
+  }, [competitionId]);
+
   const handleCelebrationEnd = useCallback(() => {
     setShowCelebration(false);
     // Keep winner and ranking data for display
@@ -104,7 +126,10 @@ const MainDisplay = () => {
     socketManager.on('competitionComplete', handleCompetitionComplete);
     socketManager.on('competitionReset', handleCompetitionReset);
     socketManager.on('currentState', handleCurrentState);
-  }, [handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCompetitionReset, handleCurrentState]);
+    socketManager.on('queueUpdate', handleQueueUpdate);
+    socketManager.on('competitionStarted', handleCompetitionStarted);
+    socketManager.on('allTeamsDone', handleAllTeamsDone);
+  }, [handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCompetitionReset, handleCurrentState, handleQueueUpdate, handleCompetitionStarted, handleAllTeamsDone]);
 
   useEffect(() => {
     fetchCompetition();
@@ -118,6 +143,9 @@ const MainDisplay = () => {
       socketManager.off('competitionComplete', handleCompetitionComplete);
       socketManager.off('competitionReset', handleCompetitionReset);
       socketManager.off('currentState', handleCurrentState);
+      socketManager.off('queueUpdate', handleQueueUpdate);
+      socketManager.off('competitionStarted', handleCompetitionStarted);
+      socketManager.off('allTeamsDone', handleAllTeamsDone);
     };
   }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCompetitionReset, handleCurrentState]);
 
@@ -144,6 +172,15 @@ const MainDisplay = () => {
 
   const activeTeams = teams.filter(team => team.status === 'active');
   const totalVotes = teams.reduce((sum, team) => sum + (team.votes || 0), 0);
+  
+  // Get queue positions
+  const currentTeam = teams.find(t => t.queue_position === 'current');
+  const nextTeam = teams.find(t => t.queue_position === 'next');
+  const afterNextTeam = teams.find(t => t.queue_position === 'after_next');
+  const doneTeams = teams.filter(t => t.is_done === 1);
+  const notDoneTeams = teams.filter(t => t.is_done === 0);
+  const remainingCount = notDoneTeams.length;
+  const isLastTeam = remainingCount === 1 && currentTeam;
 
   return (
     <div className="main-display">
@@ -175,54 +212,89 @@ const MainDisplay = () => {
               <p className="winner-subtitle">Congratulations!</p>
             </div>
           ) : (
-            <div className={`teams-grid teams-count-${Math.min(activeTeams.length, 6)}`}>
-              {teams.map(team => (
-                <div
-                  key={team.id}
-                  className={`team-card ${team.status} ${
-                    eliminatedTeams.has(team.id) ? 'eliminating' : ''
-                  }`}
-                >
-                  <div className="team-name">{team.name}</div>
-                  {showVoteCounts && team.status === 'active' && (
-                    <div className="vote-count">{team.votes || 0} votes</div>
-                  )}
-                  {team.status === 'eliminated' && (
-                    <div className="eliminated-badge">Eliminated</div>
-                  )}
-                </div>
-              ))}
+            <div className={`teams-grid teams-count-${Math.min(teams.length, 6)}`}>
+              {teams.map(team => {
+                const isDone = team.is_done === 1;
+                const queuePos = team.queue_position;
+                const isLastRemaining = remainingCount === 1 && queuePos === 'current';
+                
+                return (
+                  <div
+                    key={team.id}
+                    className={`team-card ${team.status} ${
+                      eliminatedTeams.has(team.id) ? 'eliminating' : ''
+                    } ${queuePos || ''} ${isDone ? 'done' : ''}`}
+                  >
+                    <div className="team-name">{team.name}</div>
+                    {queuePos === 'current' && !isLastRemaining && <div className="queue-badge current">🎤 CURRENT</div>}
+                    {isLastRemaining && <div className="last-badge">🌟 Last but not least!</div>}
+                    {queuePos === 'next' && <div className="queue-badge next">⏭️ NEXT</div>}
+                    {queuePos === 'after_next' && <div className="queue-badge after-next">⏭️⏭️ AFTER NEXT</div>}
+                    {isDone && <div className="done-badge">✅ DONE</div>}
+                    {showVoteCounts && team.status === 'active' && (
+                      <div className="vote-count">{team.votes || 0} votes</div>
+                    )}
+                    {team.status === 'eliminated' && (
+                      <div className="eliminated-badge">Eliminated</div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
 
         <div className="qr-section">
           <div className="qr-container">
-            <h3>Vote Now!</h3>
-            {competition?.qrCode && (
-              <img 
-                src={competition.qrCode} 
-                alt="QR Code for voting" 
-                className="qr-code"
-              />
+            {doneTeams.length === teams.length && teams.length > 0 && !winner ? (
+              <>
+                <h3>Vote Now!</h3>
+                {competition?.qrCode && (
+                  <img 
+                    src={competition.qrCode} 
+                    alt="QR Code for voting" 
+                    className="qr-code"
+                  />
+                )}
+                <p className="voting-instruction">
+                  All presentations complete! Scan to vote on your phone
+                </p>
+                <div className="voting-url">
+                  {competition?.votingUrl}
+                </div>
+              </>
+            ) : (
+              <>
+                <h3>Vote Now!</h3>
+                {competition?.qrCode && (
+                  <img 
+                    src={competition.qrCode} 
+                    alt="QR Code for voting" 
+                    className="qr-code"
+                  />
+                )}
+                <p className="voting-instruction">
+                  Scan to vote on your phone
+                </p>
+                <div className="voting-url">
+                  {competition?.votingUrl}
+                </div>
+              </>
             )}
-            <p className="voting-instruction">
-              Scan to vote on your phone
-            </p>
-            <div className="voting-url">
-              {competition?.votingUrl}
-            </div>
           </div>
         </div>
       </div>
 
-      {activeTeams.length <= 3 && activeTeams.length > 1 && (
-        <div className="final-round-indicator">
-          <p>🔥 FINAL ROUND! 🔥</p>
-        </div>
+      {/* Confetti when all teams done (but not winner celebration) */}
+      {showCelebration && doneTeams.length === teams.length && teams.length > 0 && !winner && (
+        <WinnerCelebration 
+          winner={{ name: 'All Presentations Complete!' }}
+          finalRanking={null}
+          onCelebrationEnd={handleCelebrationEnd}
+        />
       )}
-
-      {/* Winner Celebration Overlay */}
+      
+      {/* Winner Celebration Overlay (only when competition is ended) */}
       {showCelebration && winner && (
         <WinnerCelebration 
           winner={winner}

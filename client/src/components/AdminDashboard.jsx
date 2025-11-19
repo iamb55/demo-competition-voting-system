@@ -39,10 +39,33 @@ const AdminDashboard = () => {
     }
   }, [currentCompetition]);
 
+  const handleQueueUpdate = useCallback((data) => {
+    if (currentCompetition && data.competitionId === currentCompetition.id) {
+      setTeams(data.teams);
+    }
+  }, [currentCompetition]);
+
+  const handleCompetitionStarted = useCallback((data) => {
+    if (currentCompetition && data.competitionId === currentCompetition.id) {
+      setTeams(data.teams);
+      setCurrentCompetition(prev => ({ ...prev, status: 'voting' }));
+    }
+  }, [currentCompetition]);
+
+  const handleAllTeamsDone = useCallback((data) => {
+    if (currentCompetition && data.competitionId === currentCompetition.id) {
+      setTeams(data.teams);
+      setSuccess('All teams have completed their presentations! 🎉');
+    }
+  }, [currentCompetition]);
+
   const setupSocketListeners = useCallback(() => {
     socketManager.on('voteUpdate', handleVoteUpdate);
     socketManager.on('competitionComplete', handleCompetitionComplete);
-  }, [handleVoteUpdate, handleCompetitionComplete]);
+    socketManager.on('queueUpdate', handleQueueUpdate);
+    socketManager.on('competitionStarted', handleCompetitionStarted);
+    socketManager.on('allTeamsDone', handleAllTeamsDone);
+  }, [handleVoteUpdate, handleCompetitionComplete, handleQueueUpdate, handleCompetitionStarted, handleAllTeamsDone]);
 
   useEffect(() => {
     fetchHistory();
@@ -52,6 +75,9 @@ const AdminDashboard = () => {
     return () => {
       socketManager.off('voteUpdate', handleVoteUpdate);
       socketManager.off('competitionComplete', handleCompetitionComplete);
+      socketManager.off('queueUpdate', handleQueueUpdate);
+      socketManager.off('competitionStarted', handleCompetitionStarted);
+      socketManager.off('allTeamsDone', handleAllTeamsDone);
     };
   }, [setupSocketListeners, handleVoteUpdate, handleCompetitionComplete]);
 
@@ -170,13 +196,74 @@ const AdminDashboard = () => {
       });
 
       if (response.ok) {
-        setSuccess('Competition started! Voting is now live.');
+        const data = await response.json();
+        setSuccess('Competition started! Presentation queue initialized.');
         setCurrentCompetition(prev => ({ ...prev, status: 'voting' }));
+        setTeams(data.teams || []);
       } else {
         setError('Failed to start competition');
       }
     } catch (err) {
       setError('Failed to start competition');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const markTeamDone = async (teamId, isDone) => {
+    if (!currentCompetition) return;
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/competition/${currentCompetition.id}/team/${teamId}/done`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          isDone
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setTeams(data.teams || []);
+        setSuccess(isDone ? 'Team marked as done. Queue updated.' : 'Team marked as undone.');
+      } else {
+        setError('Failed to update team status');
+      }
+    } catch (err) {
+      setError('Failed to update team status');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteCompetition = async (competitionId) => {
+    if (!window.confirm('Are you sure you want to delete this competition? This action cannot be undone.')) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/competition/${competitionId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setSuccess('Competition deleted successfully.');
+        // If we deleted the current competition, clear it
+        if (currentCompetition && currentCompetition.id === competitionId) {
+          setCurrentCompetition(null);
+          setTeams([]);
+        }
+        // Refresh the history
+        await fetchHistory();
+      } else {
+        setError('Failed to delete competition');
+      }
+    } catch (err) {
+      setError('Failed to delete competition');
     } finally {
       setLoading(false);
     }
@@ -428,7 +515,17 @@ const AdminDashboard = () => {
                   disabled={loading}
                   className="start-button"
                 >
-                  Start Voting
+                  🚀 Start Competition
+                </button>
+              )}
+              
+              {currentCompetition.status === 'voting' && (
+                <button 
+                  onClick={resetCompetition} 
+                  disabled={loading}
+                  className="reset-button"
+                >
+                  🔄 Reset Competition
                 </button>
               )}
               
@@ -441,29 +538,39 @@ const AdminDashboard = () => {
                   🏆 End Competition
                 </button>
               )}
-              
-              <button 
-                onClick={resetCompetition} 
-                disabled={loading}
-                className="reset-button"
-              >
-                Reset Competition
-              </button>
             </div>
 
             {teams.length > 0 && (
               <div className="teams-status">
                 <h3>Teams Status</h3>
                 <div className="teams-list">
-                  {teams.map(team => (
-                    <div key={team.id} className={`team-status ${team.status}`}>
-                      <span className="team-name">{team.name}</span>
-                      <span className="team-votes">{team.votes || 0} votes</span>
-                      <span className={`team-badge ${team.status}`}>
-                        {team.status === 'active' ? '🟢' : '❌'} {team.status}
-                      </span>
-                    </div>
-                  ))}
+                  {teams.map((team, index) => {
+                    const queueLabel = team.queue_position === 'current' ? '🎤 CURRENT' :
+                                      team.queue_position === 'next' ? '⏭️ NEXT' :
+                                      team.queue_position === 'after_next' ? '⏭️⏭️ AFTER NEXT' : '';
+                    const isDone = team.is_done === 1;
+                    
+                    return (
+                      <div key={`${team.id}-${index}`} className={`team-status ${team.status} ${isDone ? 'done' : ''} ${team.queue_position || ''}`}>
+                        <div className="team-info">
+                          <span className="team-name">{team.name}</span>
+                          {queueLabel && <span className="queue-label">{queueLabel}</span>}
+                          {isDone && <span className="done-badge">✅ DONE</span>}
+                        </div>
+                        <div className="team-actions">
+                          {currentCompetition.status === 'voting' && (
+                            <button
+                              onClick={() => markTeamDone(team.id, !isDone)}
+                              className={`done-button ${isDone ? 'undone' : 'done'}`}
+                              disabled={loading}
+                            >
+                              {isDone ? '↩️ Undone' : '✅ Done'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -512,6 +619,12 @@ const AdminDashboard = () => {
                           className="load-button"
                         >
                           Load
+                        </button>
+                        <button 
+                          onClick={() => deleteCompetition(competition.id)}
+                          className="delete-button"
+                        >
+                          🗑️ Delete
                         </button>
                       </div>
                     </div>

@@ -7,43 +7,6 @@ const WinnerCelebration = ({ winner, finalRanking, onCelebrationEnd }) => {
   const [showWinner, setShowWinner] = useState(false);
   const [showResults, setShowResults] = useState(false);
 
-  useEffect(() => {
-    if (!winner) return;
-
-    const sequence = async () => {
-      // Stage 1: Buildup (3 seconds)
-      setStage('buildup');
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      // Stage 2: Winner Reveal
-      setStage('reveal');
-      setShowWinner(true);
-      
-      // Trigger confetti burst
-      triggerConfettiBurst();
-      
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Stage 3: Celebration with continuous confetti
-      setStage('celebration');
-      startContinuousConfetti();
-      
-      await new Promise(resolve => setTimeout(resolve, 4000));
-
-      // Stage 4: Show final results
-      setStage('results');
-      setShowResults(true);
-      stopContinuousConfetti();
-      
-      // One final confetti burst
-      setTimeout(() => {
-        triggerConfettiBurst();
-      }, 500);
-    };
-
-    sequence();
-  }, [winner]);
-
   const triggerConfettiBurst = () => {
     // Multiple confetti bursts from different angles
     const duration = 3000;
@@ -126,7 +89,63 @@ const WinnerCelebration = ({ winner, finalRanking, onCelebrationEnd }) => {
     }
   };
 
+  useEffect(() => {
+    if (!winner) return;
+
+    // If no finalRanking, just show confetti and close (for "all done" case)
+    if (!finalRanking) {
+      triggerConfettiBurst();
+      startContinuousConfetti();
+      // Auto-close after confetti
+      setTimeout(() => {
+        if (onCelebrationEnd) {
+          onCelebrationEnd();
+        }
+      }, 5000);
+      return;
+    }
+
+    // Full winner celebration sequence
+    const sequence = async () => {
+      // Stage 1: Buildup (3 seconds)
+      setStage('buildup');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Stage 2: Winner Reveal
+      setStage('reveal');
+      setShowWinner(true);
+      
+      // Trigger confetti burst
+      triggerConfettiBurst();
+      
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Stage 3: Celebration with continuous confetti
+      setStage('celebration');
+      startContinuousConfetti();
+      
+      await new Promise(resolve => setTimeout(resolve, 4000));
+
+      // Stage 4: Show final results
+      setStage('results');
+      setShowResults(true);
+      stopContinuousConfetti();
+      
+      // One final confetti burst
+      setTimeout(() => {
+        triggerConfettiBurst();
+      }, 500);
+    };
+
+    sequence();
+  }, [winner, finalRanking, onCelebrationEnd]);
+
   if (!winner) return null;
+
+  // If no finalRanking, just show confetti overlay (transparent)
+  if (!finalRanking) {
+    return <div className="winner-celebration-overlay" style={{ background: 'transparent', pointerEvents: 'none' }}></div>;
+  }
 
   return (
     <div className="winner-celebration-overlay">

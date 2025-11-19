@@ -122,6 +122,31 @@
   border-color: rgba(255, 107, 107, 0.5);
 }
 
+.team-card.done {
+  opacity: 0.5;
+  filter: grayscale(70%);
+  border-color: rgba(128, 128, 128, 0.5);
+}
+
+.team-card.current {
+  border-color: #ffd700;
+  box-shadow: 0 0 30px rgba(255, 215, 0, 0.6);
+  background: linear-gradient(145deg, rgba(255, 215, 0, 0.2), rgba(255, 215, 0, 0.1));
+  animation: currentPulse 2s ease-in-out infinite;
+}
+
+.team-card.next {
+  border-color: #4ecdc4;
+  box-shadow: 0 0 20px rgba(78, 205, 196, 0.4);
+  background: linear-gradient(145deg, rgba(78, 205, 196, 0.15), rgba(78, 205, 196, 0.05));
+}
+
+.team-card.after-next {
+  border-color: #00d4ff;
+  box-shadow: 0 0 15px rgba(0, 212, 255, 0.3);
+  background: linear-gradient(145deg, rgba(0, 212, 255, 0.1), rgba(0, 212, 255, 0.05));
+}
+
 .team-name {
   font-size: 1.8rem;
   font-weight: bold;
@@ -366,6 +391,216 @@
   
   .team-name {
     font-size: 1.5rem;
+  }
+}
+
+/* Presentation Queue Styles */
+.presentation-queue {
+  width: 100%;
+  margin-bottom: 3rem;
+}
+
+.queue-section {
+  margin-bottom: 2rem;
+}
+
+.current-section {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.queue-title {
+  font-size: 2.5rem;
+  margin-bottom: 1.5rem;
+  color: #ffd700;
+  text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+  animation: titleGlow 2s ease-in-out infinite alternate;
+}
+
+.current-team-card {
+  background: linear-gradient(145deg, rgba(255, 215, 0, 0.3), rgba(255, 215, 0, 0.1));
+  border: 3px solid #ffd700;
+  border-radius: 1.5rem;
+  padding: 3rem 2rem;
+  box-shadow: 0 0 40px rgba(255, 215, 0, 0.6);
+  animation: currentPulse 2s ease-in-out infinite;
+  backdrop-filter: blur(10px);
+}
+
+.team-name-large {
+  font-size: 4rem;
+  font-weight: bold;
+  color: #ffd700;
+  text-shadow: 0 0 30px rgba(255, 215, 0, 0.8);
+}
+
+.upcoming-section {
+  margin-top: 2rem;
+}
+
+.upcoming-title {
+  font-size: 1.8rem;
+  margin-bottom: 1.5rem;
+  color: #4ecdc4;
+  text-align: center;
+}
+
+.upcoming-teams {
+  display: flex;
+  gap: 2rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.queue-team-card {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.05));
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 1rem;
+  padding: 1.5rem 2rem;
+  min-width: 200px;
+  text-align: center;
+  backdrop-filter: blur(10px);
+  transition: all 0.3s ease;
+}
+
+.queue-team-card.next {
+  border-color: #4ecdc4;
+  box-shadow: 0 0 20px rgba(78, 205, 196, 0.4);
+  background: linear-gradient(145deg, rgba(78, 205, 196, 0.2), rgba(78, 205, 196, 0.1));
+}
+
+.queue-team-card.after-next {
+  border-color: #00d4ff;
+  box-shadow: 0 0 15px rgba(0, 212, 255, 0.3);
+  background: linear-gradient(145deg, rgba(0, 212, 255, 0.15), rgba(0, 212, 255, 0.05));
+}
+
+.queue-label {
+  font-size: 1rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.queue-team-card .team-name {
+  font-size: 1.5rem;
+  color: #fff;
+}
+
+.queue-badge {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.queue-badge.current {
+  background: rgba(255, 215, 0, 0.9);
+  color: #000;
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+}
+
+.queue-badge.next {
+  background: rgba(78, 205, 196, 0.9);
+  color: #000;
+  box-shadow: 0 0 10px rgba(78, 205, 196, 0.5);
+}
+
+.queue-badge.after-next {
+  background: rgba(0, 212, 255, 0.9);
+  color: #000;
+  box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+}
+
+.done-badge {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: rgba(128, 128, 128, 0.8);
+  color: white;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: bold;
+}
+
+.last-badge {
+  position: absolute;
+  bottom: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 215, 0, 0.9);
+  color: #000;
+  padding: 0.4rem 0.8rem;
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: bold;
+  white-space: nowrap;
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+}
+
+.last-team-indicator {
+  text-align: center;
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: linear-gradient(145deg, rgba(255, 215, 0, 0.2), rgba(255, 215, 0, 0.1));
+  border: 2px solid #ffd700;
+  border-radius: 1rem;
+  animation: lastTeamGlow 2s ease-in-out infinite;
+}
+
+.last-team-indicator p {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #ffd700;
+  margin: 0;
+  text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+}
+
+.all-teams-section {
+  margin-top: 3rem;
+}
+
+.all-teams-section h3 {
+  font-size: 2rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  color: #4ecdc4;
+}
+
+@keyframes currentPulse {
+  0%, 100% {
+    box-shadow: 0 0 40px rgba(255, 215, 0, 0.6);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 60px rgba(255, 215, 0, 0.8);
+    transform: scale(1.02);
+  }
+}
+
+@keyframes titleGlow {
+  0%, 100% {
+    text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+  }
+  50% {
+    text-shadow: 0 0 40px rgba(255, 215, 0, 0.8);
+  }
+}
+
+@keyframes lastTeamGlow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(255, 215, 0, 0.7);
   }
 }
 
