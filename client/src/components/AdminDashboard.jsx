@@ -79,6 +79,7 @@ const AdminDashboard = () => {
       socketManager.off('competitionStarted', handleCompetitionStarted);
       socketManager.off('allTeamsDone', handleAllTeamsDone);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setupSocketListeners, handleVoteUpdate, handleCompetitionComplete]);
 
   const fetchHistory = async () => {

@@ -147,6 +147,7 @@ const MainDisplay = () => {
       socketManager.off('competitionStarted', handleCompetitionStarted);
       socketManager.off('allTeamsDone', handleAllTeamsDone);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCompetitionReset, handleCurrentState]);
 
   if (loading) {
