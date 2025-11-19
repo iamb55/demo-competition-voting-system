@@ -61,17 +61,6 @@ const VotingInterface = () => {
     }
   }, [competitionId]);
 
-  const handleTeamEliminated = useCallback((data) => {
-    if (data.competitionId === competitionId) {
-      setTeams(data.remainingTeams);
-      // Reset voting for next round
-      setVoted(false);
-      setSelectedTeam(null);
-      localStorage.removeItem(`has-voted-${competitionId}`);
-      localStorage.removeItem(`vote-timestamp-${competitionId}`);
-    }
-  }, [competitionId]);
-
   const handleCompetitionComplete = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setError(`Competition complete! Winner: ${data.winner.name}`);
@@ -86,12 +75,10 @@ const VotingInterface = () => {
 
   const handleCompetitionReset = useCallback((data) => {
     if (data.competitionId === competitionId) {
-      // Reset voting states for new competition
       setTeams(data.teams?.filter(team => team.status === 'active') || []);
       setVoted(false);
       setSelectedTeam(null);
       setError(null);
-      // Clear local storage vote records
       localStorage.removeItem(`has-voted-${competitionId}`);
       localStorage.removeItem(`vote-timestamp-${competitionId}`);
     }
@@ -99,11 +86,10 @@ const VotingInterface = () => {
 
   const setupSocketListeners = useCallback(() => {
     socketManager.on('voteUpdate', handleVoteUpdate);
-    socketManager.on('teamEliminated', handleTeamEliminated);
     socketManager.on('competitionComplete', handleCompetitionComplete);
     socketManager.on('competitionReset', handleCompetitionReset);
     socketManager.on('currentState', handleCurrentState);
-  }, [handleVoteUpdate, handleTeamEliminated, handleCompetitionComplete, handleCompetitionReset, handleCurrentState]);
+  }, [handleVoteUpdate, handleCompetitionComplete, handleCompetitionReset, handleCurrentState]);
 
   const handleTeamSelect = (team) => {
     if (!voted && !voting) {
@@ -135,7 +121,6 @@ const VotingInterface = () => {
         const voteTimestamp = new Date().toISOString();
         localStorage.setItem(`has-voted-${competitionId}`, 'true');
         localStorage.setItem(`vote-timestamp-${competitionId}`, voteTimestamp);
-        // Keep selected team visible for feedback
       } else {
         const errorData = await response.json();
         setError(errorData.error || 'Failed to submit vote');
@@ -153,7 +138,6 @@ const VotingInterface = () => {
   };
 
   useEffect(() => {
-    // Generate or get voter session ID
     let sessionId = localStorage.getItem(`voter-session-${competitionId}`);
     if (!sessionId) {
       sessionId = `voter_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -161,7 +145,6 @@ const VotingInterface = () => {
     }
     setVoterSession(sessionId);
 
-    // Check if already voted
     const hasVoted = localStorage.getItem(`has-voted-${competitionId}`);
     if (hasVoted) {
       setVoted(true);
@@ -173,12 +156,11 @@ const VotingInterface = () => {
 
     return () => {
       socketManager.off('voteUpdate', handleVoteUpdate);
-      socketManager.off('teamEliminated', handleTeamEliminated);
       socketManager.off('competitionComplete', handleCompetitionComplete);
       socketManager.off('competitionReset', handleCompetitionReset);
       socketManager.off('currentState', handleCurrentState);
     };
-  }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleTeamEliminated, handleCompetitionComplete, handleCompetitionReset, handleCurrentState]);
+  }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleCompetitionComplete, handleCompetitionReset, handleCurrentState]);
 
   if (loading) {
     return (
@@ -218,11 +200,6 @@ const VotingInterface = () => {
       <header className="voting-header">
         <h1>🗳️ Cast Your Vote</h1>
         <p className="competition-name">{competition?.name}</p>
-        {teams.length <= 3 && (
-          <div className="final-round-badge">
-            🔥 FINAL ROUND!
-          </div>
-        )}
       </header>
 
       {voted ? (
@@ -234,7 +211,7 @@ const VotingInterface = () => {
             {selectedTeam?.name}
           </div>
           <p className="wait-message">
-            Please wait for the next round or check the main display for results.
+            Check the main display for results!
           </p>
         </div>
       ) : (
@@ -301,5 +278,3 @@ const VotingInterface = () => {
 };
 
 export default VotingInterface;
-
-

@@ -364,61 +364,61 @@ async function updateVoteCounts(competitionId) {
   }
 }
 
-async function checkForElimination(competitionId) {
-  try {
-    const competition = activeCompetitions.get(competitionId);
-    if (!competition || competition.status !== 'voting') return;
-
-    const teams = await db.getTeams(competitionId);
-    const activeTeams = teams.filter(team => team.status === 'active');
-    
-    if (activeTeams.length <= 1) {
-      // We have a winner!
-      await endCompetition(competitionId);
-      return;
-    }
-
-    // Check if we should eliminate the team with the least votes
-    const totalVotes = activeTeams.reduce((sum, team) => sum + team.votes, 0);
-    
-    // Eliminate if we have enough votes (at least 10% of expected participants)
-    const expectedParticipants = competition.expectedParticipants || 50;
-    const minVotesForElimination = Math.max(10, expectedParticipants * 0.1);
-
-    if (totalVotes >= minVotesForElimination && activeTeams.length > 2) {
-      // Sort by votes (ascending) to find team with least votes
-      activeTeams.sort((a, b) => a.votes - b.votes);
-      
-      const teamToEliminate = activeTeams[0];
-      const secondLowest = activeTeams[1];
-      
-      // Only eliminate if there's a clear difference (not a tie)
-      if (teamToEliminate.votes < secondLowest.votes) {
-        await db.eliminateTeam(teamToEliminate.id);
-        
-        // Emit elimination event
-        io.emit('teamEliminated', {
-          competitionId,
-          eliminatedTeam: teamToEliminate,
-          remainingTeams: activeTeams.filter(t => t.id !== teamToEliminate.id)
-        });
-
-        // Reset votes for next round
-        setTimeout(async () => {
-          await db.resetTeams(competitionId);
-          const updatedTeams = await updateVoteCounts(competitionId);
-          
-          io.emit('roundReset', {
-            competitionId,
-            teams: updatedTeams.filter(t => t.status === 'active')
-          });
-        }, 3000); // 3 second delay for animation
-      }
-    }
-  } catch (error) {
-    console.error('Error checking for elimination:', error);
-  }
-}
+// async function checkForElimination(competitionId) {
+//   try {
+//     const competition = activeCompetitions.get(competitionId);
+//     if (!competition || competition.status !== 'voting') return;
+// 
+//     const teams = await db.getTeams(competitionId);
+//     const activeTeams = teams.filter(team => team.status === 'active');
+//     
+//     if (activeTeams.length <= 1) {
+//       // We have a winner!
+//       await endCompetition(competitionId);
+//       return;
+//     }
+// 
+//     // Check if we should eliminate the team with the least votes
+//     const totalVotes = activeTeams.reduce((sum, team) => sum + team.votes, 0);
+//     
+//     // Eliminate if we have enough votes (at least 10% of expected participants)
+//     const expectedParticipants = competition.expectedParticipants || 50;
+//     const minVotesForElimination = Math.max(10, expectedParticipants * 0.1);
+// 
+//     if (totalVotes >= minVotesForElimination && activeTeams.length > 2) {
+//       // Sort by votes (ascending) to find team with least votes
+//       activeTeams.sort((a, b) => a.votes - b.votes);
+//       
+//       const teamToEliminate = activeTeams[0];
+//       const secondLowest = activeTeams[1];
+//       
+//       // Only eliminate if there's a clear difference (not a tie)
+//       if (teamToEliminate.votes < secondLowest.votes) {
+//         await db.eliminateTeam(teamToEliminate.id);
+//         
+//         // Emit elimination event
+//         io.emit('teamEliminated', {
+//           competitionId,
+//           eliminatedTeam: teamToEliminate,
+//           remainingTeams: activeTeams.filter(t => t.id !== teamToEliminate.id)
+//         });
+// 
+//         // Reset votes for next round
+//         setTimeout(async () => {
+//           await db.resetTeams(competitionId);
+//           const updatedTeams = await updateVoteCounts(competitionId);
+//           
+//           io.emit('roundReset', {
+//             competitionId,
+//             teams: updatedTeams.filter(t => t.status === 'active')
+//           });
+//         }, 3000); // 3 second delay for animation
+//       }
+//     }
+//   } catch (error) {
+//     console.error('Error checking for elimination:', error);
+//   }
+// }
 
 async function endCompetition(competitionId) {
   try {
@@ -601,9 +601,8 @@ app.post('/api/vote', async (req, res) => {
       activeComp.totalParticipants = (activeComp.totalParticipants || 0) + 1;
     }
 
-    // Update vote counts and check for elimination
+    // Update vote counts (no elimination in single-round voting)
     await updateVoteCounts(competitionId);
-    setTimeout(() => checkForElimination(competitionId), 1000);
 
     res.json({ success: true });
   } catch (error) {

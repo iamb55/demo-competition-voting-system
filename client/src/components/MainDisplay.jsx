@@ -11,7 +11,6 @@ const MainDisplay = () => {
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [eliminatedTeams, setEliminatedTeams] = useState(new Set());
   const [winner, setWinner] = useState(null);
   const [finalRanking, setFinalRanking] = useState(null);
   const [showCelebration, setShowCelebration] = useState(false);
@@ -43,30 +42,6 @@ const MainDisplay = () => {
     }
   }, [competitionId]);
 
-  const handleTeamEliminated = useCallback((data) => {
-    if (data.competitionId === competitionId) {
-      setEliminatedTeams(prev => new Set([...prev, data.eliminatedTeam.id]));
-      
-      // Animate elimination
-      setTimeout(() => {
-        setTeams(prevTeams => 
-          prevTeams.map(team => 
-            team.id === data.eliminatedTeam.id 
-              ? { ...team, status: 'eliminated' }
-              : team
-          )
-        );
-      }, 2000);
-    }
-  }, [competitionId]);
-
-  const handleRoundReset = useCallback((data) => {
-    if (data.competitionId === competitionId) {
-      setTeams(data.teams);
-      setEliminatedTeams(new Set());
-    }
-  }, [competitionId]);
-
   const handleCompetitionComplete = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setWinner(data.winner);
@@ -83,9 +58,7 @@ const MainDisplay = () => {
 
   const handleCompetitionReset = useCallback((data) => {
     if (data.competitionId === competitionId) {
-      // Reset all states to initial values
       setTeams(data.teams || []);
-      setEliminatedTeams(new Set());
       setWinner(null);
       setFinalRanking(null);
       setShowCelebration(false);
@@ -109,27 +82,23 @@ const MainDisplay = () => {
   const handleAllTeamsDone = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setTeams(data.teams);
-      // Just show confetti, don't set winner or complete competition
       setShowCelebration(true);
     }
   }, [competitionId]);
 
   const handleCelebrationEnd = useCallback(() => {
     setShowCelebration(false);
-    // Keep winner and ranking data for display
   }, []);
 
   const setupSocketListeners = useCallback(() => {
     socketManager.on('voteUpdate', handleVoteUpdate);
-    socketManager.on('teamEliminated', handleTeamEliminated);
-    socketManager.on('roundReset', handleRoundReset);
     socketManager.on('competitionComplete', handleCompetitionComplete);
     socketManager.on('competitionReset', handleCompetitionReset);
     socketManager.on('currentState', handleCurrentState);
     socketManager.on('queueUpdate', handleQueueUpdate);
     socketManager.on('competitionStarted', handleCompetitionStarted);
     socketManager.on('allTeamsDone', handleAllTeamsDone);
-  }, [handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCompetitionReset, handleCurrentState, handleQueueUpdate, handleCompetitionStarted, handleAllTeamsDone]);
+  }, [handleVoteUpdate, handleCompetitionComplete, handleCompetitionReset, handleCurrentState, handleQueueUpdate, handleCompetitionStarted, handleAllTeamsDone]);
 
   useEffect(() => {
     fetchCompetition();
@@ -138,8 +107,6 @@ const MainDisplay = () => {
 
     return () => {
       socketManager.off('voteUpdate', handleVoteUpdate);
-      socketManager.off('teamEliminated', handleTeamEliminated);
-      socketManager.off('roundReset', handleRoundReset);
       socketManager.off('competitionComplete', handleCompetitionComplete);
       socketManager.off('competitionReset', handleCompetitionReset);
       socketManager.off('currentState', handleCurrentState);
@@ -148,7 +115,7 @@ const MainDisplay = () => {
       socketManager.off('allTeamsDone', handleAllTeamsDone);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [competitionId, fetchCompetition, setupSocketListeners, handleVoteUpdate, handleTeamEliminated, handleRoundReset, handleCompetitionComplete, handleCompetitionReset, handleCurrentState]);
+  }, [competitionId, fetchCompetition, setupSocketListeners]);
 
   if (loading) {
     return (
@@ -172,7 +139,6 @@ const MainDisplay = () => {
   }
 
   const totalVotes = teams.reduce((sum, team) => sum + (team.votes || 0), 0);
-  
   const doneTeams = teams.filter(t => t.is_done === 1);
   const notDoneTeams = teams.filter(t => t.is_done === 0);
   const remainingCount = notDoneTeams.length;
@@ -216,9 +182,7 @@ const MainDisplay = () => {
                 return (
                   <div
                     key={team.id}
-                    className={`team-card ${team.status} ${
-                      eliminatedTeams.has(team.id) ? 'eliminating' : ''
-                    } ${queuePos || ''} ${isDone ? 'done' : ''}`}
+                    className={`team-card ${team.status} ${queuePos || ''} ${isDone ? 'done' : ''}`}
                   >
                     <div className="team-name">{team.name}</div>
                     {queuePos === 'current' && !isLastRemaining && <div className="queue-badge current">🎤 CURRENT</div>}
@@ -226,11 +190,8 @@ const MainDisplay = () => {
                     {queuePos === 'next' && <div className="queue-badge next">⏭️ NEXT</div>}
                     {queuePos === 'after_next' && <div className="queue-badge after-next">⏭️⏭️ AFTER NEXT</div>}
                     {isDone && <div className="done-badge">✅ DONE</div>}
-                    {showVoteCounts && team.status === 'active' && (
+                    {showVoteCounts && (
                       <div className="vote-count">{team.votes || 0} votes</div>
-                    )}
-                    {team.status === 'eliminated' && (
-                      <div className="eliminated-badge">Eliminated</div>
                     )}
                   </div>
                 );
@@ -302,5 +263,3 @@ const MainDisplay = () => {
 };
 
 export default MainDisplay;
-
-
