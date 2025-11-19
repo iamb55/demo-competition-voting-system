@@ -170,17 +170,11 @@ const MainDisplay = () => {
     );
   }
 
-  const activeTeams = teams.filter(team => team.status === 'active');
   const totalVotes = teams.reduce((sum, team) => sum + (team.votes || 0), 0);
   
-  // Get queue positions
-  const currentTeam = teams.find(t => t.queue_position === 'current');
-  const nextTeam = teams.find(t => t.queue_position === 'next');
-  const afterNextTeam = teams.find(t => t.queue_position === 'after_next');
   const doneTeams = teams.filter(t => t.is_done === 1);
   const notDoneTeams = teams.filter(t => t.is_done === 0);
   const remainingCount = notDoneTeams.length;
-  const isLastTeam = remainingCount === 1 && currentTeam;
 
   return (
     <div className="main-display">
