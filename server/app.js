@@ -507,14 +507,14 @@ app.get('/api/competition/:id', async (req, res) => {
 // Create new competition
 app.post('/api/competition', async (req, res) => {
   try {
-    const { name, teamNames } = req.body;
+    const { name, teamNames, teamPresenters } = req.body;
     
     if (!name || !teamNames || !Array.isArray(teamNames) || teamNames.length < 2) {
       return res.status(400).json({ error: 'Invalid competition data' });
     }
 
     const competitionId = uuidv4();
-    await db.createCompetition(competitionId, name, teamNames);
+    await db.createCompetition(competitionId, name, teamNames, teamPresenters);
 
     const qrCode = await generateQRCode(competitionId);
     

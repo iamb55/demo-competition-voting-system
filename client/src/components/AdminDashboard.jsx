@@ -18,8 +18,10 @@ const AdminDashboard = () => {
   const [expectedParticipants, setExpectedParticipants] = useState(50);
   
   // Bulk input state
-  const [inputMode, setInputMode] = useState('individual'); // 'individual' or 'bulk'
+  const [inputMode, setInputMode] = useState('individual'); // 'individual', 'bulk', or 'csv'
   const [bulkTeamNames, setBulkTeamNames] = useState('');
+  const [csvFile, setCsvFile] = useState(null);
+  const [csvData, setCsvData] = useState(null); // { teamNames: [], teamPresenters: [] }
 
   const handleVoteUpdate = useCallback((data) => {
     console.log('Admin received vote update:', data);
@@ -94,12 +96,184 @@ const AdminDashboard = () => {
     }
   };
 
+  const parseCSV = (text) => {
+    const lines = text.split('\n').filter(line => line.trim());
+    if (lines.length < 2) {
+      throw new Error('CSV file must have at least a header row and one data row');
+    }
+
+    // Simple CSV parser that handles quoted fields
+    const parseCSVLine = (line) => {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+      
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+
+    // Parse header row
+    const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase().replace(/"/g, ''));
+    
+    // Find column indices - be flexible with column names
+    // Date column: "Demo day", "date", or anything containing "date"
+    const dateColIndex = headers.findIndex(h => 
+      h.includes('demo day') || h === 'demo day' || h.includes('date')
+    );
+    const demoTitleColIndex = headers.findIndex(h => 
+      (h.includes('demo') && h.includes('title')) || h === 'demo title' || h === 'title'
+    );
+    const presenterColIndex = headers.findIndex(h => 
+      h.includes('presenter') && (h.includes('name') || h.includes('names'))
+    );
+
+    if (dateColIndex === -1) {
+      throw new Error('CSV must contain a date column (e.g., "Demo day" or "Date")');
+    }
+    if (demoTitleColIndex === -1) {
+      throw new Error('CSV must contain a "Demo Title" column');
+    }
+    if (presenterColIndex === -1) {
+      throw new Error('CSV must contain a "Presenter Name(s)" column');
+    }
+
+    // Parse data rows
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCSVLine(lines[i]).map(v => v.replace(/^"|"$/g, ''));
+      if (values.length <= Math.max(dateColIndex, demoTitleColIndex, presenterColIndex)) {
+        continue; // Skip incomplete rows
+      }
+      
+      const dateStr = values[dateColIndex];
+      const demoTitle = values[demoTitleColIndex];
+      const presenterNames = values[presenterColIndex];
+
+      if (!dateStr || !demoTitle) {
+        continue; // Skip rows without required data
+      }
+
+      // Parse date - try multiple formats
+      let date = null;
+      try {
+        date = new Date(dateStr);
+        if (isNaN(date.getTime())) {
+          // Try other formats (MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD)
+          const parts = dateStr.split(/[-\/]/);
+          if (parts.length === 3) {
+            // Try YYYY-MM-DD first
+            if (parts[0].length === 4) {
+              date = new Date(parts[0], parts[1] - 1, parts[2]);
+            } else {
+              // Try MM/DD/YYYY or DD/MM/YYYY
+              date = new Date(parts[2] || parts[0], parts[0] - 1, parts[1] || parts[2]);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Could not parse date:', dateStr);
+        continue;
+      }
+
+      if (isNaN(date.getTime())) {
+        continue; // Skip rows with invalid dates
+      }
+
+      rows.push({
+        date,
+        demoTitle: demoTitle.trim(),
+        presenterNames: presenterNames ? presenterNames.trim() : null
+      });
+    }
+
+    if (rows.length === 0) {
+      throw new Error('No valid rows found in CSV');
+    }
+
+    // Find most recent date
+    const mostRecentDate = new Date(Math.max(...rows.map(r => r.date.getTime())));
+    
+    // Filter rows with most recent date
+    const recentRows = rows.filter(r => {
+      const rDate = new Date(r.date);
+      return rDate.getTime() === mostRecentDate.getTime();
+    });
+
+    // Extract team names and presenter names
+    const teamNames = [];
+    const teamPresenters = [];
+    
+    recentRows.forEach(row => {
+      teamNames.push(row.demoTitle);
+      
+      // Parse presenter names - could be comma-separated, semicolon-separated, or "and" separated
+      let presenters = [];
+      if (row.presenterNames) {
+        presenters = row.presenterNames
+          .split(/[,;]| and /i)
+          .map(p => p.trim())
+          .filter(p => p.length > 0);
+      }
+      teamPresenters.push(presenters.length > 0 ? presenters : null);
+    });
+
+    return { teamNames, teamPresenters };
+  };
+
+  const handleCSVFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) {
+      setCsvFile(null);
+      setCsvData(null);
+      return;
+    }
+
+    if (!file.name.endsWith('.csv')) {
+      setError('Please select a CSV file');
+      return;
+    }
+
+    setCsvFile(file);
+    setError(null);
+
+    try {
+      const text = await file.text();
+      const parsed = parseCSV(text);
+      setCsvData(parsed);
+      setSuccess(`Successfully parsed ${parsed.teamNames.length} teams from CSV`);
+    } catch (err) {
+      setError(err.message || 'Failed to parse CSV file');
+      setCsvData(null);
+    }
+  };
+
   const createCompetition = async (e) => {
     e.preventDefault();
     
-    // Get team names based on input mode
+    // Get team names and presenters based on input mode
     let finalTeamNames = [];
-    if (inputMode === 'bulk') {
+    let finalTeamPresenters = null;
+    
+    if (inputMode === 'csv') {
+      if (!csvData || csvData.teamNames.length < 2) {
+        setError('Please upload a CSV file with at least 2 teams');
+        return;
+      }
+      finalTeamNames = csvData.teamNames;
+      finalTeamPresenters = csvData.teamPresenters;
+    } else if (inputMode === 'bulk') {
       finalTeamNames = bulkTeamNames
         .split('\n')
         .map(name => name.trim())
@@ -129,7 +303,8 @@ const AdminDashboard = () => {
         },
         body: JSON.stringify({
           name: competitionName.trim(),
-          teamNames: finalTeamNames
+          teamNames: finalTeamNames,
+          teamPresenters: finalTeamPresenters
         }),
       });
 
@@ -145,6 +320,8 @@ const AdminDashboard = () => {
         setCompetitionName('');
         setTeamNames(['', '', '', '', '', '', '', '', '', '']);
         setBulkTeamNames('');
+        setCsvFile(null);
+        setCsvData(null);
         setInputMode('individual');
         setShowCreateForm(false);
         
@@ -366,6 +543,10 @@ const AdminDashboard = () => {
     setInputMode('bulk');
   };
 
+  const switchToCSV = () => {
+    setInputMode('csv');
+  };
+
   const clearMessages = () => {
     setError(null);
     setSuccess(null);
@@ -429,6 +610,13 @@ const AdminDashboard = () => {
                     >
                       Paste List
                     </button>
+                    <button
+                      type="button"
+                      className={`toggle-button ${inputMode === 'csv' ? 'active' : ''}`}
+                      onClick={switchToCSV}
+                    >
+                      CSV Import
+                    </button>
                   </div>
                 </div>
                 
@@ -445,7 +633,7 @@ const AdminDashboard = () => {
                       />
                     ))}
                   </div>
-                ) : (
+                ) : inputMode === 'bulk' ? (
                   <div className="bulk-input-container">
                     <textarea
                       value={bulkTeamNames}
@@ -460,6 +648,47 @@ const AdminDashboard = () => {
                     {bulkTeamNames && (
                       <div className="team-count">
                         {bulkTeamNames.split('\n').filter(name => name.trim()).length} teams detected
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="csv-input-container">
+                    <input
+                      type="file"
+                      accept=".csv"
+                      onChange={handleCSVFileChange}
+                      className="csv-file-input"
+                      id="csv-file-input"
+                    />
+                    <label htmlFor="csv-file-input" className="csv-file-label">
+                      {csvFile ? csvFile.name : 'Choose CSV File'}
+                    </label>
+                    <div className="csv-input-help">
+                      💡 CSV Requirements:
+                      <ul>
+                        <li>Must contain columns: Demo day (or Date), Demo Title, Presenter Name(s)</li>
+                        <li>Only rows with the most recent date will be imported</li>
+                        <li>Presenter names can be comma, semicolon, or "and" separated</li>
+                      </ul>
+                    </div>
+                    {csvData && (
+                      <div className="csv-preview">
+                        <div className="team-count">
+                          {csvData.teamNames.length} teams detected from most recent date
+                        </div>
+                        <div className="csv-preview-list">
+                          {csvData.teamNames.map((name, index) => (
+                            <div key={index} className="csv-preview-item">
+                              <strong>{name}</strong>
+                              {Array.isArray(csvData.teamPresenters[index]) && csvData.teamPresenters[index].length > 0 && (
+                                <span className="presenter-names">
+                                  {' - '}
+                                  {csvData.teamPresenters[index].join(', ')}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -555,6 +784,11 @@ const AdminDashboard = () => {
                       <div key={`${team.id}-${index}`} className={`team-status ${team.status} ${isDone ? 'done' : ''} ${team.queue_position || ''}`}>
                         <div className="team-info">
                           <span className="team-name">{team.name}</span>
+                          {Array.isArray(team.presenter_names) && team.presenter_names.length > 0 && (
+                            <span className="presenter-names-admin">
+                              ({team.presenter_names.join(', ')})
+                            </span>
+                          )}
                           {queueLabel && <span className="queue-label">{queueLabel}</span>}
                           {isDone && <span className="done-badge">✅ DONE</span>}
                         </div>

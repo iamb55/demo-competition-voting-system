@@ -37,6 +37,7 @@ class Database {
           eliminated_at DATETIME,
           queue_position TEXT,
           is_done INTEGER DEFAULT 0,
+          presenter_names TEXT,
           FOREIGN KEY (competition_id) REFERENCES competitions (id)
         )
       `);
@@ -96,11 +97,20 @@ class Database {
           console.warn('Error adding is_done column:', err.message);
         }
       });
+
+      // Add presenter_names column to existing teams table (for backwards compatibility)
+      this.db.run(`
+        ALTER TABLE teams ADD COLUMN presenter_names TEXT
+      `, (err) => {
+        if (err && !err.message.includes('duplicate column name')) {
+          console.warn('Error adding presenter_names column:', err.message);
+        }
+      });
     });
   }
 
   // Competition methods
-  async createCompetition(id, name, teamNames) {
+  async createCompetition(id, name, teamNames, teamPresenters = null) {
     return new Promise((resolve, reject) => {
       this.db.serialize(() => {
         this.db.run('BEGIN TRANSACTION');
@@ -119,10 +129,11 @@ class Database {
         );
 
         // Create teams
-        const stmt = this.db.prepare('INSERT INTO teams (id, competition_id, name, position) VALUES (?, ?, ?, ?)');
+        const stmt = this.db.prepare('INSERT INTO teams (id, competition_id, name, position, presenter_names) VALUES (?, ?, ?, ?, ?)');
         teamNames.forEach((teamName, index) => {
           const teamId = `${id}_team_${index + 1}`;
-          stmt.run(teamId, id, teamName, index + 1);
+          const presenterNames = teamPresenters && teamPresenters[index] ? JSON.stringify(teamPresenters[index]) : null;
+          stmt.run(teamId, id, teamName, index + 1, presenterNames);
         });
         stmt.finalize();
 
@@ -206,7 +217,27 @@ class Database {
         [competitionId],
         (err, rows) => {
           if (err) reject(err);
-          else resolve(rows);
+          else {
+            // Parse presenter_names JSON if present
+            const parsedRows = rows.map(row => {
+              let presenterNames = null;
+              if (row.presenter_names) {
+                try {
+                  const parsed = JSON.parse(row.presenter_names);
+                  // Ensure it's an array
+                  presenterNames = Array.isArray(parsed) ? parsed : null;
+                } catch (e) {
+                  // If parsing fails, set to null
+                  presenterNames = null;
+                }
+              }
+              return {
+                ...row,
+                presenter_names: presenterNames
+              };
+            });
+            resolve(parsedRows);
+          }
         }
       );
     });
@@ -359,16 +390,36 @@ class Database {
   async getAllVoteCounts(competitionId) {
     return new Promise((resolve, reject) => {
       this.db.all(
-        `SELECT t.id, t.name, t.status, t.queue_position, t.is_done, COUNT(v.id) as votes 
+        `SELECT t.id, t.name, t.status, t.queue_position, t.is_done, t.presenter_names, COUNT(v.id) as votes 
          FROM teams t 
          LEFT JOIN votes v ON t.id = v.team_id 
          WHERE t.competition_id = ? 
-         GROUP BY t.id, t.name, t.status, t.queue_position, t.is_done
+         GROUP BY t.id, t.name, t.status, t.queue_position, t.is_done, t.presenter_names
          ORDER BY t.position`,
         [competitionId],
         (err, rows) => {
           if (err) reject(err);
-          else resolve(rows);
+          else {
+            // Parse presenter_names JSON if present
+            const parsedRows = rows.map(row => {
+              let presenterNames = null;
+              if (row.presenter_names) {
+                try {
+                  const parsed = JSON.parse(row.presenter_names);
+                  // Ensure it's an array
+                  presenterNames = Array.isArray(parsed) ? parsed : null;
+                } catch (e) {
+                  // If parsing fails, set to null
+                  presenterNames = null;
+                }
+              }
+              return {
+                ...row,
+                presenter_names: presenterNames
+              };
+            });
+            resolve(parsedRows);
+          }
         }
       );
     });

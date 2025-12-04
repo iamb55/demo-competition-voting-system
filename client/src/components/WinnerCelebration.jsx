@@ -176,6 +176,9 @@ const WinnerCelebration = ({ winner, finalRanking, onCelebrationEnd }) => {
               <div className="winner-card">
                 <div className="winner-crown">👑</div>
                 <h2 className="winner-name">{winner.name}</h2>
+                {Array.isArray(winner.presenter_names) && winner.presenter_names.length > 0 && (
+                  <div className="winner-presenters">{winner.presenter_names.join(', ')}</div>
+                )}
                 <div className="winner-votes">{winner.votes} votes</div>
                 <div className="winner-sparkles">✨ ⭐ ✨</div>
               </div>
@@ -192,6 +195,9 @@ const WinnerCelebration = ({ winner, finalRanking, onCelebrationEnd }) => {
                 <div className="winner-announcement-large">
                   <div className="winner-crown">👑</div>
                   <div className="winner-name">{winner?.name}</div>
+                  {Array.isArray(winner?.presenter_names) && winner.presenter_names.length > 0 && (
+                    <div className="winner-presenters-large">{winner.presenter_names.join(', ')}</div>
+                  )}
                   <div className="winner-subtitle">CHAMPION!</div>
                   <div className="winner-votes">{winner?.votes || 0} votes</div>
                 </div>

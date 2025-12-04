@@ -170,6 +170,11 @@ const MainDisplay = () => {
               <div className="winner-team">
                 {winner.name}
               </div>
+              {Array.isArray(winner.presenter_names) && winner.presenter_names.length > 0 && (
+                <div className="winner-presenters">
+                  {winner.presenter_names.join(', ')}
+                </div>
+              )}
               <p className="winner-subtitle">Congratulations!</p>
             </div>
           ) : (
@@ -178,6 +183,8 @@ const MainDisplay = () => {
                 const isDone = team.is_done === 1;
                 const queuePos = team.queue_position;
                 const isLastRemaining = remainingCount === 1 && queuePos === 'current';
+                const isCurrent = queuePos === 'current';
+                const presenterNames = Array.isArray(team.presenter_names) ? team.presenter_names : null;
                 
                 return (
                   <div
@@ -185,6 +192,11 @@ const MainDisplay = () => {
                     className={`team-card ${team.status} ${queuePos || ''} ${isDone ? 'done' : ''}`}
                   >
                     <div className="team-name">{team.name}</div>
+                    {isCurrent && presenterNames && presenterNames.length > 0 && (
+                      <div className="presenter-names">
+                        {presenterNames.join(', ')}
+                      </div>
+                    )}
                     {queuePos === 'current' && !isLastRemaining && <div className="queue-badge current">🎤 CURRENT</div>}
                     {isLastRemaining && <div className="last-badge">🌟 Last but not least!</div>}
                     {queuePos === 'next' && <div className="queue-badge next">⏭️ NEXT</div>}

@@ -197,6 +197,22 @@
   animation: textShine 2s ease-in-out infinite;
 }
 
+.winner-presenters {
+  font-size: 1.5rem;
+  color: #7f8c8d;
+  margin: 0.5rem 0;
+  font-style: italic;
+  font-weight: 500;
+}
+
+.winner-presenters-large {
+  font-size: 1.3rem;
+  color: #b8860b;
+  margin: 0.5rem 0;
+  font-style: italic;
+  font-weight: 500;
+}
+
 @keyframes textShine {
   0% { text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1); }
   50% { text-shadow: 2px 2px 20px rgba(255, 215, 0, 0.5); }
