@@ -171,7 +171,7 @@ const AdminDashboard = () => {
         date = new Date(dateStr);
         if (isNaN(date.getTime())) {
           // Try other formats (MM/DD/YYYY, DD/MM/YYYY, YYYY-MM-DD)
-          const parts = dateStr.split(/[-\/]/);
+          const parts = dateStr.split(/[-/]/);
           if (parts.length === 3) {
             // Try YYYY-MM-DD first
             if (parts[0].length === 4) {
