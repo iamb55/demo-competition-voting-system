@@ -3,7 +3,6 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
-const QRCode = require('qrcode');
 const Database = require('./database');
 const os = require('os');
 const path = require('path');
@@ -318,51 +317,7 @@ async function handleAfterNextTeamDone(competitionId) {
   }
 }
 
-// Utility functions
-function generateVotingUrl(competitionId) {
-  return `${CLIENT_URL}/vote?competition=${competitionId}`;
-}
-
-async function generateQRCode(competitionId) {
-  try {
-    const votingUrl = generateVotingUrl(competitionId);
-    const qrCodeDataUrl = await QRCode.toDataURL(votingUrl, {
-      width: 300,
-      margin: 2,
-      color: {
-        dark: '#000000',
-        light: '#FFFFFF'
-      }
-    });
-    return qrCodeDataUrl;
-  } catch (error) {
-    console.error('Error generating QR code:', error);
-    return null;
-  }
-}
-
-async function updateVoteCounts(competitionId) {
-  try {
-    const voteCounts = await db.getAllVoteCounts(competitionId);
-    
-    // Update team vote counts in database
-    for (const team of voteCounts) {
-      await db.updateTeamVotes(team.id, team.votes);
-    }
-
-    // Emit updated vote counts to all clients
-    console.log('Emitting vote update for competition:', competitionId, 'to', voteCounts.length, 'teams');
-    io.emit('voteUpdate', {
-      competitionId,
-      teams: voteCounts
-    });
-
-    return voteCounts;
-  } catch (error) {
-    console.error('Error updating vote counts:', error);
-    return [];
-  }
-}
+// Utility functions (removed voting-related functions)
 
 // async function checkForElimination(competitionId) {
 //   try {
@@ -420,66 +375,7 @@ async function updateVoteCounts(competitionId) {
 //   }
 // }
 
-async function endCompetition(competitionId) {
-  try {
-    // First ensure vote counts are up to date
-    await updateVoteCounts(competitionId);
-    
-    // Get teams with updated vote counts
-    const teams = await db.getTeams(competitionId);
-    const activeTeams = teams.filter(team => team.status === 'active');
-    
-    // Determine winner by vote count (highest votes wins)
-    activeTeams.sort((a, b) => (b.votes || 0) - (a.votes || 0));
-    const winner = activeTeams[0];
-    
-    if (winner) {
-      // Update competition status
-      await db.updateCompetitionStatus(competitionId, 'completed', {
-        completed_at: new Date().toISOString(),
-        winner_team_id: winner.id
-      });
-
-      // Save competition results
-      const finalRanking = teams
-        .sort((a, b) => {
-          if (a.status === 'active') return -1;
-          if (b.status === 'active') return 1;
-          return (b.eliminated_at || 0) - (a.eliminated_at || 0);
-        })
-        .map(team => ({
-          teamId: team.id,
-          teamName: team.name,
-          finalVotes: team.votes,
-          status: team.status
-        }));
-
-      const totalVotes = teams.reduce((sum, team) => sum + team.votes, 0);
-      const competition = activeCompetitions.get(competitionId);
-      const duration = Date.now() - competition.startTime;
-      
-      await db.saveCompetitionResult(
-        competitionId, 
-        finalRanking, 
-        totalVotes, 
-        competition.totalParticipants || 0,
-        Math.round(duration / 60000) // Convert to minutes
-      );
-
-      // Emit winner announcement
-      io.emit('competitionComplete', {
-        competitionId,
-        winner,
-        finalRanking
-      });
-
-      // Remove from active competitions
-      activeCompetitions.delete(competitionId);
-    }
-  } catch (error) {
-    console.error('Error ending competition:', error);
-  }
-}
+// endCompetition function removed - voting functionality disabled
 
 // API Routes
 
@@ -490,14 +386,8 @@ app.get('/api/competition/:id', async (req, res) => {
     if (!competition) {
       return res.status(404).json({ error: 'Competition not found' });
     }
-
-    const qrCode = await generateQRCode(competition.id);
     
-    res.json({
-      ...competition,
-      votingUrl: generateVotingUrl(competition.id),
-      qrCode
-    });
+    res.json(competition);
   } catch (error) {
     console.error('Error getting competition:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -515,14 +405,10 @@ app.post('/api/competition', async (req, res) => {
 
     const competitionId = uuidv4();
     await db.createCompetition(competitionId, name, teamNames, teamPresenters);
-
-    const qrCode = await generateQRCode(competitionId);
     
     res.json({
       competitionId,
-      name,
-      votingUrl: generateVotingUrl(competitionId),
-      qrCode
+      name
     });
   } catch (error) {
     console.error('Error creating competition:', error);
@@ -565,48 +451,6 @@ app.post('/api/competition/:id/start', async (req, res) => {
     res.json({ success: true, queue, teams });
   } catch (error) {
     console.error('Error starting competition:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Submit vote
-app.post('/api/vote', async (req, res) => {
-  try {
-    const { competitionId, teamId, voterSession } = req.body;
-    const ipAddress = req.ip;
-
-    if (!competitionId || !teamId || !voterSession) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    // Check if competition exists and is active
-    const competition = await db.getCompetition(competitionId);
-    if (!competition || competition.status !== 'voting') {
-      return res.status(400).json({ error: 'Competition not available for voting' });
-    }
-
-    // Check if user has already voted
-    const hasVoted = await db.hasVoted(competitionId, voterSession);
-    if (hasVoted) {
-      return res.status(400).json({ error: 'You have already voted' });
-    }
-
-    // Add vote
-    const voteId = uuidv4();
-    await db.addVote(voteId, competitionId, teamId, voterSession, ipAddress);
-
-    // Update participant count
-    const activeComp = activeCompetitions.get(competitionId);
-    if (activeComp) {
-      activeComp.totalParticipants = (activeComp.totalParticipants || 0) + 1;
-    }
-
-    // Update vote counts (no elimination in single-round voting)
-    await updateVoteCounts(competitionId);
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Error submitting vote:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -669,8 +513,8 @@ app.post('/api/competition/:id/reset', async (req, res) => {
     // Reset all teams (status, vote counts, queue positions, and done status)
     await db.resetTeams(competitionId);
     
-    // Clear all votes - this is essential for proper reset!
-    await db.clearVotes(competitionId);
+    // Clear all votes (if voting was enabled)
+    // await db.clearVotes(competitionId);
     
     // Remove from active competitions
     activeCompetitions.delete(competitionId);
@@ -858,47 +702,6 @@ app.post('/api/competition/:id/team/:teamId/done', async (req, res) => {
   }
 });
 
-// Manually end competition (declare winner)
-app.post('/api/competition/:id/end', async (req, res) => {
-  try {
-    const competitionId = req.params.id;
-    
-    // Check if competition exists and is active
-    const competition = await db.getCompetition(competitionId);
-    if (!competition) {
-      return res.status(404).json({ error: 'Competition not found' });
-    }
-
-    if (competition.status !== 'voting') {
-      return res.status(400).json({ error: 'Competition is not currently active' });
-    }
-
-    // Get current teams and determine winner (team with most votes)
-    const teams = await db.getTeams(competitionId);
-    const activeTeams = teams.filter(team => team.status === 'active');
-    
-    if (activeTeams.length === 0) {
-      return res.status(400).json({ error: 'No active teams found' });
-    }
-
-    // Sort teams by votes (descending) to find winner
-    activeTeams.sort((a, b) => (b.votes || 0) - (a.votes || 0));
-    const winner = activeTeams[0];
-
-    // Manually trigger the end competition process
-    await endCompetition(competitionId);
-    
-    res.json({ 
-      success: true,
-      winner: winner,
-      message: `Competition ended! Winner: ${winner.name} with ${winner.votes || 0} votes`
-    });
-  } catch (error) {
-    console.error('Error ending competition:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
 // Socket.io connection handling
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
@@ -909,7 +712,7 @@ io.on('connection', (socket) => {
     
     // Send current state
     try {
-      const teams = await updateVoteCounts(competitionId);
+      const teams = await db.getTeams(competitionId);
       socket.emit('currentState', {
         competitionId,
         teams
@@ -945,10 +748,7 @@ server.listen(PORT, () => {
   console.log();
   console.log('📋 Instructions:');
   console.log('   1. Open admin dashboard: http://localhost:3000/admin');
-  console.log(`   2. For mobile voting, devices must connect to: ${CLIENT_URL}`);
-  console.log('   3. QR codes will automatically use the mobile-accessible URL');
-  console.log();
-  console.log('💡 Tip: Make sure mobile devices are on the same WiFi network!');
+  console.log(`   2. Open main display: http://localhost:3000`);
   console.log('='.repeat(50));
 });
 

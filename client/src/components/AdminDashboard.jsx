@@ -23,23 +23,6 @@ const AdminDashboard = () => {
   const [csvFile, setCsvFile] = useState(null);
   const [csvData, setCsvData] = useState(null); // { teamNames: [], teamPresenters: [] }
 
-  const handleVoteUpdate = useCallback((data) => {
-    console.log('Admin received vote update:', data);
-    if (currentCompetition && data.competitionId === currentCompetition.id) {
-      setTeams(data.teams);
-    }
-  }, [currentCompetition]);
-
-  const handleCompetitionComplete = useCallback((data) => {
-    if (currentCompetition && data.competitionId === currentCompetition.id) {
-      setSuccess(`Competition completed! Winner: ${data.winner.name}`);
-      setTimeout(() => {
-        fetchHistory();
-        setCurrentCompetition(null);
-        setTeams([]);
-      }, 3000);
-    }
-  }, [currentCompetition]);
 
   const handleQueueUpdate = useCallback((data) => {
     if (currentCompetition && data.competitionId === currentCompetition.id) {
@@ -62,12 +45,10 @@ const AdminDashboard = () => {
   }, [currentCompetition]);
 
   const setupSocketListeners = useCallback(() => {
-    socketManager.on('voteUpdate', handleVoteUpdate);
-    socketManager.on('competitionComplete', handleCompetitionComplete);
     socketManager.on('queueUpdate', handleQueueUpdate);
     socketManager.on('competitionStarted', handleCompetitionStarted);
     socketManager.on('allTeamsDone', handleAllTeamsDone);
-  }, [handleVoteUpdate, handleCompetitionComplete, handleQueueUpdate, handleCompetitionStarted, handleAllTeamsDone]);
+  }, [handleQueueUpdate, handleCompetitionStarted, handleAllTeamsDone]);
 
   useEffect(() => {
     fetchHistory();
@@ -75,14 +56,12 @@ const AdminDashboard = () => {
     socketManager.connect();
 
     return () => {
-      socketManager.off('voteUpdate', handleVoteUpdate);
-      socketManager.off('competitionComplete', handleCompetitionComplete);
       socketManager.off('queueUpdate', handleQueueUpdate);
       socketManager.off('competitionStarted', handleCompetitionStarted);
       socketManager.off('allTeamsDone', handleAllTeamsDone);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setupSocketListeners, handleVoteUpdate, handleCompetitionComplete]);
+  }, [setupSocketListeners]);
 
   const fetchHistory = async () => {
     try {
@@ -470,36 +449,6 @@ const AdminDashboard = () => {
     }
   };
 
-  const endCompetition = async () => {
-    if (!currentCompetition) return;
-
-    // Confirm before ending
-    if (!window.confirm('Are you sure you want to end this competition? The team with the most votes will be declared the winner.')) {
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/competition/${currentCompetition.id}/end`, {
-        method: 'POST',
-      });
-
-      const data = await response.json();
-      
-      if (response.ok) {
-        setSuccess(`Competition ended! Winner: ${data.winner?.name || 'Unknown'}`);
-        await loadCompetition(currentCompetition.id);
-        fetchHistory();
-      } else {
-        setError(data.error || 'Failed to end competition');
-      }
-    } catch (err) {
-      setError('Failed to end competition');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const openMainDisplay = () => {
     if (currentCompetition) {
       const url = `/?competition=${currentCompetition.id}`;
@@ -725,17 +674,6 @@ const AdminDashboard = () => {
                   {currentCompetition.status.toUpperCase()}
                 </span>
               </div>
-              
-              <div className="info-card">
-                <h3>QR Code for Voting</h3>
-                {currentCompetition.qrCode && (
-                  <img 
-                    src={currentCompetition.qrCode} 
-                    alt="QR Code" 
-                    className="qr-preview"
-                  />
-                )}
-              </div>
             </div>
 
             <div className="competition-controls">
@@ -756,16 +694,6 @@ const AdminDashboard = () => {
                   className="reset-button"
                 >
                   🔄 Reset Competition
-                </button>
-              )}
-              
-              {currentCompetition.status === 'voting' && teams.filter(team => team.status === 'active').length > 1 && (
-                <button 
-                  onClick={endCompetition} 
-                  disabled={loading}
-                  className="end-button"
-                >
-                  🏆 End Competition
                 </button>
               )}
             </div>
@@ -839,14 +767,6 @@ const AdminDashboard = () => {
                         </span>
                       </div>
                       
-                      {competition.winner_team_id && competition.final_ranking && (
-                        <div className="competition-result">
-                          <p><strong>Winner:</strong> {
-                            competition.final_ranking[0]?.teamName || 'Unknown'
-                          }</p>
-                          <p><strong>Total Votes:</strong> {competition.total_votes}</p>
-                        </div>
-                      )}
                       
                       <div className="competition-actions">
                         <button 

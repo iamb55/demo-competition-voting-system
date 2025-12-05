@@ -11,10 +11,8 @@ const MainDisplay = () => {
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [winner, setWinner] = useState(null);
-  const [finalRanking, setFinalRanking] = useState(null);
   const [showCelebration, setShowCelebration] = useState(false);
-  const [showVoteCounts, setShowVoteCounts] = useState(false);
+  const [markingDone, setMarkingDone] = useState(false);
 
   const competitionId = searchParams.get('competition') || 'demo-competition';
 
@@ -36,20 +34,6 @@ const MainDisplay = () => {
     }
   }, [competitionId]);
 
-  const handleVoteUpdate = useCallback((data) => {
-    if (data.competitionId === competitionId) {
-      setTeams(data.teams);
-    }
-  }, [competitionId]);
-
-  const handleCompetitionComplete = useCallback((data) => {
-    if (data.competitionId === competitionId) {
-      setWinner(data.winner);
-      setFinalRanking(data.finalRanking);
-      setShowCelebration(true);
-    }
-  }, [competitionId]);
-
   const handleCurrentState = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setTeams(data.teams);
@@ -59,9 +43,6 @@ const MainDisplay = () => {
   const handleCompetitionReset = useCallback((data) => {
     if (data.competitionId === competitionId) {
       setTeams(data.teams || []);
-      setWinner(null);
-      setFinalRanking(null);
-      setShowCelebration(false);
     }
   }, [competitionId]);
 
@@ -90,15 +71,41 @@ const MainDisplay = () => {
     setShowCelebration(false);
   }, []);
 
+  const markCurrentTeamDone = useCallback(async (teamId) => {
+    if (!competition || markingDone) return;
+
+    setMarkingDone(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/competition/${competitionId}/team/${teamId}/done`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          isDone: true
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setTeams(data.teams || []);
+      } else {
+        console.error('Failed to mark team as done');
+      }
+    } catch (err) {
+      console.error('Error marking team as done:', err);
+    } finally {
+      setMarkingDone(false);
+    }
+  }, [competition, competitionId, markingDone]);
+
   const setupSocketListeners = useCallback(() => {
-    socketManager.on('voteUpdate', handleVoteUpdate);
-    socketManager.on('competitionComplete', handleCompetitionComplete);
     socketManager.on('competitionReset', handleCompetitionReset);
     socketManager.on('currentState', handleCurrentState);
     socketManager.on('queueUpdate', handleQueueUpdate);
     socketManager.on('competitionStarted', handleCompetitionStarted);
     socketManager.on('allTeamsDone', handleAllTeamsDone);
-  }, [handleVoteUpdate, handleCompetitionComplete, handleCompetitionReset, handleCurrentState, handleQueueUpdate, handleCompetitionStarted, handleAllTeamsDone]);
+  }, [handleCompetitionReset, handleCurrentState, handleQueueUpdate, handleCompetitionStarted, handleAllTeamsDone]);
 
   useEffect(() => {
     fetchCompetition();
@@ -106,8 +113,6 @@ const MainDisplay = () => {
     socketManager.connect();
 
     return () => {
-      socketManager.off('voteUpdate', handleVoteUpdate);
-      socketManager.off('competitionComplete', handleCompetitionComplete);
       socketManager.off('competitionReset', handleCompetitionReset);
       socketManager.off('currentState', handleCurrentState);
       socketManager.off('queueUpdate', handleQueueUpdate);
@@ -116,6 +121,16 @@ const MainDisplay = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [competitionId, fetchCompetition, setupSocketListeners]);
+
+  // Check if all teams are done and show celebration
+  const doneTeams = teams.filter(t => t.is_done === 1);
+  const allTeamsDone = doneTeams.length === teams.length && teams.length > 0;
+
+  useEffect(() => {
+    if (allTeamsDone && !showCelebration) {
+      setShowCelebration(true);
+    }
+  }, [allTeamsDone, showCelebration]);
 
   if (loading) {
     return (
@@ -138,8 +153,6 @@ const MainDisplay = () => {
     );
   }
 
-  const totalVotes = teams.reduce((sum, team) => sum + (team.votes || 0), 0);
-  const doneTeams = teams.filter(t => t.is_done === 1);
   const notDoneTeams = teams.filter(t => t.is_done === 0);
   const remainingCount = notDoneTeams.length;
 
@@ -147,126 +160,64 @@ const MainDisplay = () => {
     <div className="main-display">
       <header className="display-header">
         <h1>{competition?.name || 'Demo Competition'}</h1>
-        <div className="controls">
-          <button 
-            onClick={() => setShowVoteCounts(!showVoteCounts)}
-            className="toggle-votes"
-          >
-            {showVoteCounts ? 'Hide Votes' : 'Show Votes'}
-          </button>
-          {totalVotes > 0 && (
-            <div className="vote-counter">
-              Total Votes: {totalVotes}
-            </div>
-          )}
-        </div>
       </header>
 
       <div className="content-area">
         <div className="teams-section">
-          {winner ? (
-            <div className="winner-announcement">
-              <h2 className="winner-title">🎉 WINNER! 🎉</h2>
-              <div className="winner-team">
-                {winner.name}
-              </div>
-              {Array.isArray(winner.presenter_names) && winner.presenter_names.length > 0 && (
-                <div className="winner-presenters">
-                  {winner.presenter_names.join(', ')}
+          <div className={`teams-grid teams-count-${Math.min(teams.length, 6)}`}>
+            {teams.map(team => {
+              const isDone = team.is_done === 1;
+              const queuePos = team.queue_position;
+              const isLastRemaining = remainingCount === 1 && queuePos === 'current';
+              const isCurrent = queuePos === 'current';
+              const presenterNames = Array.isArray(team.presenter_names) ? team.presenter_names : null;
+              
+              return (
+                <div
+                  key={team.id}
+                  className={`team-card ${team.status} ${queuePos || ''} ${isDone ? 'done' : ''}`}
+                >
+                  <div className="team-name">{team.name}</div>
+                  {isCurrent && presenterNames && presenterNames.length > 0 && (
+                    <div className="presenter-names">
+                      {presenterNames.join(', ')}
+                    </div>
+                  )}
+                  {queuePos === 'current' && !isLastRemaining && (
+                    <button
+                      onClick={() => markCurrentTeamDone(team.id)}
+                      disabled={markingDone || competition?.status !== 'voting'}
+                      className="queue-badge current clickable"
+                      title="Click to mark as done"
+                    >
+                      🎤 CURRENT
+                    </button>
+                  )}
+                  {isLastRemaining && (
+                    <button
+                      onClick={() => markCurrentTeamDone(team.id)}
+                      disabled={markingDone || competition?.status !== 'voting'}
+                      className="last-badge clickable"
+                      title="Click to mark as done"
+                    >
+                      🌟 Last but not least!
+                    </button>
+                  )}
+                  {queuePos === 'next' && <div className="queue-badge next">⏭️ NEXT</div>}
+                  {queuePos === 'after_next' && <div className="queue-badge after-next">⏭️⏭️ AFTER NEXT</div>}
+                  {isDone && <div className="done-badge">✅ DONE</div>}
                 </div>
-              )}
-              <p className="winner-subtitle">Congratulations!</p>
-            </div>
-          ) : (
-            <div className={`teams-grid teams-count-${Math.min(teams.length, 6)}`}>
-              {teams.map(team => {
-                const isDone = team.is_done === 1;
-                const queuePos = team.queue_position;
-                const isLastRemaining = remainingCount === 1 && queuePos === 'current';
-                const isCurrent = queuePos === 'current';
-                const presenterNames = Array.isArray(team.presenter_names) ? team.presenter_names : null;
-                
-                return (
-                  <div
-                    key={team.id}
-                    className={`team-card ${team.status} ${queuePos || ''} ${isDone ? 'done' : ''}`}
-                  >
-                    <div className="team-name">{team.name}</div>
-                    {isCurrent && presenterNames && presenterNames.length > 0 && (
-                      <div className="presenter-names">
-                        {presenterNames.join(', ')}
-                      </div>
-                    )}
-                    {queuePos === 'current' && !isLastRemaining && <div className="queue-badge current">🎤 CURRENT</div>}
-                    {isLastRemaining && <div className="last-badge">🌟 Last but not least!</div>}
-                    {queuePos === 'next' && <div className="queue-badge next">⏭️ NEXT</div>}
-                    {queuePos === 'after_next' && <div className="queue-badge after-next">⏭️⏭️ AFTER NEXT</div>}
-                    {isDone && <div className="done-badge">✅ DONE</div>}
-                    {showVoteCounts && (
-                      <div className="vote-count">{team.votes || 0} votes</div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div className="qr-section">
-          <div className="qr-container">
-            {doneTeams.length === teams.length && teams.length > 0 && !winner ? (
-              <>
-                <h3>Vote Now!</h3>
-                {competition?.qrCode && (
-                  <img 
-                    src={competition.qrCode} 
-                    alt="QR Code for voting" 
-                    className="qr-code"
-                  />
-                )}
-                <p className="voting-instruction">
-                  All presentations complete! Scan to vote on your phone
-                </p>
-                <div className="voting-url">
-                  {competition?.votingUrl}
-                </div>
-              </>
-            ) : (
-              <>
-                <h3>Vote Now!</h3>
-                {competition?.qrCode && (
-                  <img 
-                    src={competition.qrCode} 
-                    alt="QR Code for voting" 
-                    className="qr-code"
-                  />
-                )}
-                <p className="voting-instruction">
-                  Scan to vote on your phone
-                </p>
-                <div className="voting-url">
-                  {competition?.votingUrl}
-                </div>
-              </>
-            )}
+              );
+            })}
           </div>
         </div>
       </div>
 
-      {/* Confetti when all teams done (but not winner celebration) */}
-      {showCelebration && doneTeams.length === teams.length && teams.length > 0 && !winner && (
+      {/* Confetti celebration when all teams are done */}
+      {showCelebration && allTeamsDone && (
         <WinnerCelebration 
           winner={{ name: 'All Presentations Complete!' }}
           finalRanking={null}
-          onCelebrationEnd={handleCelebrationEnd}
-        />
-      )}
-      
-      {/* Winner Celebration Overlay (only when competition is ended) */}
-      {showCelebration && winner && (
-        <WinnerCelebration 
-          winner={winner}
-          finalRanking={finalRanking}
           onCelebrationEnd={handleCelebrationEnd}
         />
       )}
